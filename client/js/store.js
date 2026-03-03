@@ -52,7 +52,10 @@ const StoreModule = {
                                 <span class="store-prog-text" id="text-${item.id}"></span>
                             </div>
                             <button class="btn btn-primary" id="btn-${item.id}"
-                                onclick="StoreModule.download('${item.id}', '${item.url || ''}', '${item.cmd || ''}', '${item.type}')">
+                                onclick="StoreModule.download('${item.id}', ${JSON.stringify({
+                    url: item.url || '', dirUrl: item.dirUrl || '', pattern: item.pattern || '',
+                    cmd: item.cmd || '', type: item.type
+                }).replace(/"/g, '&quot;')})">
                                 ${item.type === 'manual' ? '🔗 Info' : '⬇ Download'}
                             </button>
                         </div>
@@ -64,7 +67,8 @@ const StoreModule = {
         el.innerHTML = html;
     },
 
-    async download(id, url, cmd, type) {
+    async download(id, itemConfig) {
+        const { url, dirUrl, pattern, cmd, type } = itemConfig;
         const btn = document.getElementById(`btn-${id}`);
         const prog = document.getElementById(`prog-${id}`);
 
@@ -81,7 +85,7 @@ const StoreModule = {
             const res = await authFetch(`${API}/api/store/download`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id, url, cmd, type })
+                body: JSON.stringify({ id, url, dirUrl, pattern, cmd, type })
             });
             const data = await res.json();
 
@@ -113,7 +117,11 @@ const StoreModule = {
                 const res = await authFetch(`${API}/api/store/progress/${id}`);
                 const data = await res.json();
 
-                if (data.status === 'downloading') {
+                if (data.status === 'discovering') {
+                    text.textContent = 'Finding...';
+                    btn.textContent = '🔍 Finding...';
+                    setTimeout(check, 2000);
+                } else if (data.status === 'downloading') {
                     fill.style.width = data.progress + '%';
                     text.textContent = data.progress + '%';
                     btn.textContent = '⏳ ' + data.progress + '%';
@@ -125,9 +133,12 @@ const StoreModule = {
                     btn.textContent = '✅ Done';
                     btn.disabled = true;
                 } else if (data.status === 'failed') {
+                    fill.style.width = '100%';
+                    fill.style.background = 'var(--red)';
                     text.textContent = 'Failed';
                     btn.textContent = '⬇ Retry';
                     btn.disabled = false;
+                    if (data.output) alert('Download failed:\n' + data.output);
                 } else {
                     setTimeout(check, 3000);
                 }
