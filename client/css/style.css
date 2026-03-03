@@ -2059,7 +2059,11 @@ body {
 
     .sidebar {
         position: fixed;
+        top: 0;
         left: calc(-1 * var(--sidebar-width));
+        height: 100vh;
+        height: 100dvh;
+        /* dynamic viewport height — accounts for mobile browser chrome */
         z-index: 200;
         box-shadow: 4px 0 20px rgba(0, 0, 0, 0.5);
         transition: left 0.3s ease;
@@ -2078,8 +2082,8 @@ body {
         width: 100%;
         padding-top: 56px;
         /* space for mobile header */
-        padding-bottom: 80px;
-        /* space for mobile browser bottom bar */
+        padding-bottom: 120px;
+        /* space for mobile browser bottom bar + extra scroll */
     }
 
     /* File manager: hide date column and show actions on mobile */

@@ -167,8 +167,8 @@ module.exports = function (config) {
                     items: [
                         { id: 'gutenberg', name: 'Project Gutenberg Top 100', desc: '100 classic books (EPUB)', size: '200 MB', url: 'https://www.gutenberg.org/', type: 'manual' },
                         {
-                            id: 'medref', name: 'WHO Medical Reference', desc: 'Essential medicines + first aid', size: '~50 MB',
-                            dirUrl: 'https://download.kiwix.org/zim/other/', pattern: 'who_en_all_\\d{4}-\\d{2}\\.zim', type: 'zim'
+                            id: 'medref', name: 'Medical Wikipedia (mdwiki)', desc: 'Medical articles, drugs, first aid', size: '~800 MB',
+                            dirUrl: 'https://download.kiwix.org/zim/mdwiki/', pattern: 'mdwiki_en_all_maxi_\\d{4}-\\d{2}\\.zim', type: 'zim'
                         },
                         { id: 'survival-fm', name: 'US Army Survival Manual', desc: 'FM 21-76 field survival guide', size: '15 MB', url: 'https://archive.org/', type: 'manual' }
                     ]
@@ -355,7 +355,7 @@ module.exports = function (config) {
             'wikibooks': 'wikibooks_en',
             'wikihow': 'wikihow_en',
             'stackexchange': 'stackoverflow',
-            'medref': 'who_en'
+            'medref': 'mdwiki_en'
         };
 
         try {
