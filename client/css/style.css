@@ -1995,12 +1995,29 @@ body {
 /* ═══════════════════════════════════════════
    RESPONSIVE
    ═══════════════════════════════════════════ */
+/* Sidebar Backdrop (mobile) */
+.sidebar-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 199;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.sidebar-backdrop.visible {
+    display: block;
+    opacity: 1;
+}
+
 @media (max-width: 768px) {
     .sidebar {
         position: fixed;
-        left: -var(--sidebar-width);
+        left: calc(-1 * var(--sidebar-width));
         z-index: 200;
         box-shadow: 4px 0 20px rgba(0, 0, 0, 0.5);
+        transition: left 0.3s ease;
     }
 
     .sidebar.open {
@@ -2013,6 +2030,7 @@ body {
 
     .main-content {
         margin-left: 0;
+        width: 100%;
     }
 
     .player-bar {
@@ -2057,5 +2075,17 @@ body {
 
     .login-card {
         padding: 28px;
+    }
+
+    .surv-grid {
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    }
+
+    .utils-grid {
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    }
+
+    .store-items {
+        grid-template-columns: 1fr;
     }
 }

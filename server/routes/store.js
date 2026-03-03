@@ -84,24 +84,37 @@ module.exports = function (config) {
 
             res.json({ success: true, downloadId: dlId, message: 'Model download started' });
         } else if (type === 'zim' && url) {
-            // Download ZIM file with wget
+            // Download ZIM file with curl (preferred on Termux) or wget
             const dlId = id;
             const dest = path.join(DOWNLOADS_DIR, id + '.zim');
             activeDownloads.set(dlId, { status: 'downloading', progress: 0, output: '' });
 
-            const proc = exec(`wget -c -O "${dest}" "${url}" 2>&1`, { timeout: 86400000 }); // 24hr timeout
-            let output = '';
-            proc.stdout?.on('data', (d) => {
-                output += d;
-                const pctMatch = d.toString().match(/(\d+)%/);
-                const pct = pctMatch ? parseInt(pctMatch[1]) : 0;
-                activeDownloads.set(dlId, { status: 'downloading', progress: pct, output: output.slice(-500) });
-            });
-            proc.on('close', (code) => {
-                activeDownloads.set(dlId, {
-                    status: code === 0 ? 'complete' : 'failed',
-                    progress: code === 0 ? 100 : 0,
-                    output: code === 0 ? `Downloaded to ${dest}` : 'Download failed'
+            // Prefer curl (available by default on most systems), fall back to wget
+            exec('which curl', (err) => {
+                const dlCmd = err
+                    ? `wget -c -O "${dest}" "${url}" 2>&1`
+                    : `curl -L -C - -o "${dest}" --progress-bar "${url}" 2>&1`;
+
+                const proc = exec(dlCmd, { timeout: 86400000 }); // 24hr timeout
+                let output = '';
+                proc.stdout?.on('data', (d) => {
+                    output += d;
+                    const pctMatch = d.toString().match(/(\d+)%/);
+                    const pct = pctMatch ? parseInt(pctMatch[1]) : 0;
+                    activeDownloads.set(dlId, { status: 'downloading', progress: pct, output: output.slice(-500) });
+                });
+                proc.stderr?.on('data', (d) => {
+                    output += d;
+                    const pctMatch = d.toString().match(/(\d+(?:\.\d+)?)%/);
+                    const pct = pctMatch ? Math.round(parseFloat(pctMatch[1])) : activeDownloads.get(dlId)?.progress || 0;
+                    activeDownloads.set(dlId, { status: 'downloading', progress: pct, output: output.slice(-500) });
+                });
+                proc.on('close', (code) => {
+                    activeDownloads.set(dlId, {
+                        status: code === 0 ? 'complete' : 'failed',
+                        progress: code === 0 ? 100 : 0,
+                        output: code === 0 ? `Downloaded to ${dest}` : 'Download failed. Install curl or wget: pkg install curl'
+                    });
                 });
             });
 

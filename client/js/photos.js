@@ -57,9 +57,10 @@ const PhotosModule = {
             html += '<div class="photo-grid">';
             group.photos.forEach(photo => {
                 const idx = this.photos.findIndex(p => p.id === photo.id);
+                const tokenParam = Auth.token ? `?token=${encodeURIComponent(Auth.token)}` : '';
                 html += `
                     <div class="photo-item" onclick="PhotosModule.openLightbox(${idx})">
-                        <img src="${API}/api/photos/thumb/${photo.id}" 
+                        <img src="${API}/api/photos/thumb/${photo.id}${tokenParam}" 
                              alt="${photo.name}" loading="lazy"
                              onerror="this.parentElement.innerHTML='🖼️'">
                     </div>`;
@@ -75,10 +76,11 @@ const PhotosModule = {
         const overlay = document.createElement('div');
         overlay.className = 'lightbox';
         overlay.id = 'lightbox';
+        const tokenParam = Auth.token ? `?token=${encodeURIComponent(Auth.token)}` : '';
         overlay.innerHTML = `
             <button class="lightbox-close" onclick="PhotosModule.closeLightbox()">✕</button>
             <button class="lightbox-nav prev" onclick="event.stopPropagation(); PhotosModule.lightboxPrev()">‹</button>
-            <img src="${API}/api/photos/full/${photo.id}" alt="${photo.name}">
+            <img src="${API}/api/photos/full/${photo.id}${tokenParam}" alt="${photo.name}">
             <button class="lightbox-nav next" onclick="event.stopPropagation(); PhotosModule.lightboxNext()">›</button>
         `;
         overlay.addEventListener('click', (e) => {

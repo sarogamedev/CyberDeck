@@ -116,7 +116,8 @@ const MusicPlayer = {
         this.currentIndex = index;
         this.currentTrack = this.playlist[index];
 
-        this.audio.src = `${API}/api/music/stream/${this.currentTrack.id}`;
+        const tokenParam = Auth.token ? `?token=${encodeURIComponent(Auth.token)}` : '';
+        this.audio.src = `${API}/api/music/stream/${this.currentTrack.id}${tokenParam}`;
         this.audio.play();
         this.isPlaying = true;
 
@@ -130,7 +131,7 @@ const MusicPlayer = {
         // Update cover
         const coverEl = document.getElementById('playerCover');
         if (this.currentTrack.hasCover) {
-            coverEl.innerHTML = `<img src="${API}/api/music/cover/${this.currentTrack.id}" alt="cover">`;
+            coverEl.innerHTML = `<img src="${API}/api/music/cover/${this.currentTrack.id}${tokenParam}" alt="cover">`;
         } else {
             coverEl.innerHTML = '🎵';
         }

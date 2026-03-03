@@ -82,17 +82,18 @@ const EbooksModule = {
     },
 
     openBook(id, title, ext) {
+        const tokenParam = Auth.token ? `?token=${encodeURIComponent(Auth.token)}` : '';
         if (ext === 'epub' && typeof ePub !== 'undefined') {
-            this.openEpub(id, title);
+            this.openEpub(id, title, tokenParam);
         } else if (ext === 'pdf') {
-            this.openPdf(id, title);
+            this.openPdf(id, title, tokenParam);
         } else {
             // Fallback: download
-            window.open(`${API}/api/ebooks/read/${id}`, '_blank');
+            window.open(`${API}/api/ebooks/read/${id}${tokenParam}`, '_blank');
         }
     },
 
-    openEpub(id, title) {
+    openEpub(id, title, tokenParam) {
         const overlay = document.createElement('div');
         overlay.className = 'reader-overlay';
         overlay.id = 'readerOverlay';
@@ -108,7 +109,7 @@ const EbooksModule = {
         document.body.appendChild(overlay);
 
         try {
-            const book = ePub(`${API}/api/ebooks/read/${id}`);
+            const book = ePub(`${API}/api/ebooks/read/${id}${tokenParam}`);
             this.rendition = book.renderTo('readerContent', {
                 width: '100%',
                 height: '100%',
@@ -132,7 +133,7 @@ const EbooksModule = {
         document.addEventListener('keydown', this._keyHandler);
     },
 
-    openPdf(id, title) {
+    openPdf(id, title, tokenParam) {
         const overlay = document.createElement('div');
         overlay.className = 'reader-overlay';
         overlay.id = 'readerOverlay';
@@ -142,7 +143,7 @@ const EbooksModule = {
                 <span class="book-reading-title">${title}</span>
             </div>
             <div class="reader-content">
-                <iframe src="${API}/api/ebooks/read/${id}" title="${title}"></iframe>
+                <iframe src="${API}/api/ebooks/read/${id}${tokenParam}" title="${title}"></iframe>
             </div>
         `;
         document.body.appendChild(overlay);

@@ -90,10 +90,11 @@ const VideosModule = {
         const overlay = document.createElement('div');
         overlay.className = 'video-player-overlay';
         overlay.id = 'videoOverlay';
+        const tokenParam = Auth.token ? `?token=${encodeURIComponent(Auth.token)}` : '';
         overlay.innerHTML = `
             <button class="close-btn" onclick="VideosModule.closePlayer()">✕</button>
             <video controls autoplay>
-                <source src="${API}/api/videos/stream/${id}" type="video/mp4">
+                <source src="${API}/api/videos/stream/${id}${tokenParam}" type="video/mp4">
                 Your browser does not support video playback.
             </video>
         `;

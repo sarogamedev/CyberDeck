@@ -176,19 +176,32 @@ function switchModule(name) {
 
     // Close sidebar on mobile
     if (window.innerWidth <= 768) {
-        document.getElementById('sidebar').classList.remove('open');
+        closeSidebar();
     }
 }
 
 // Sidebar toggle
 function toggleSidebar() {
     const sidebar = document.getElementById('sidebar');
+    const backdrop = document.getElementById('sidebarBackdrop');
     if (window.innerWidth <= 768) {
-        sidebar.classList.toggle('open');
+        const isOpen = sidebar.classList.toggle('open');
+        if (isOpen) {
+            backdrop.classList.add('visible');
+        } else {
+            backdrop.classList.remove('visible');
+        }
     } else {
         sidebar.classList.toggle('collapsed');
         sidebarCollapsed = sidebar.classList.contains('collapsed');
     }
+}
+
+function closeSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const backdrop = document.getElementById('sidebarBackdrop');
+    sidebar.classList.remove('open');
+    backdrop.classList.remove('visible');
 }
 
 // Connection check

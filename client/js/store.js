@@ -78,17 +78,27 @@ const StoreModule = {
         prog.style.display = 'flex';
 
         try {
-            await authFetch(`${API}/api/store/download`, {
+            const res = await authFetch(`${API}/api/store/download`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id, url, cmd, type })
             });
+            const data = await res.json();
+
+            if (data.error) {
+                btn.disabled = false;
+                btn.textContent = '⬇ Retry';
+                prog.style.display = 'none';
+                alert('Download error: ' + data.error);
+                return;
+            }
 
             // Poll progress
             this.pollProgress(id);
         } catch (err) {
             btn.disabled = false;
             btn.textContent = '⬇ Retry';
+            prog.style.display = 'none';
             alert('Download failed: ' + err.message);
         }
     },

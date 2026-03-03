@@ -117,7 +117,8 @@ const FilesModule = {
     },
 
     download(filePath) {
-        window.open(`${API}/api/files/download?path=${encodeURIComponent(filePath)}`, '_blank');
+        const token = Auth.token ? `&token=${encodeURIComponent(Auth.token)}` : '';
+        window.open(`${API}/api/files/download?path=${encodeURIComponent(filePath)}${token}`, '_blank');
     },
 
     previewFile(filePath, ext) {
@@ -127,7 +128,8 @@ const FilesModule = {
             return;
         }
 
-        const url = `${API}/api/files/preview?path=${encodeURIComponent(filePath)}`;
+        const token = Auth.token ? `&token=${encodeURIComponent(Auth.token)}` : '';
+        const url = `${API}/api/files/preview?path=${encodeURIComponent(filePath)}${token}`;
         const overlay = document.createElement('div');
         overlay.className = 'video-player-overlay';
         overlay.id = 'filePreview';
@@ -203,7 +205,11 @@ const FilesModule = {
             formData.append('files', file);
         }
         try {
-            await authFetch(`${API}/api/files/upload`, { method: 'POST', body: formData });
+            await authFetch(`${API}/api/files/upload`, {
+                method: 'POST',
+                body: formData,
+                // Note: do NOT set Content-Type header — browser sets it with boundary for FormData
+            });
             await this.browse(this.currentPath);
         } catch (err) {
             alert('Upload failed: ' + err.message);
