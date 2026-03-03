@@ -32,7 +32,7 @@ const WikiModule = {
 
     async checkStatus() {
         try {
-            const res = await fetch(`${API}/api/wiki/status`);
+            const res = await authFetch(`${API}/api/wiki/status`);
             const data = await res.json();
             document.getElementById('wikiStatus').textContent =
                 data.running ? 'Kiwix running ✓' : 'Kiwix not running — start from Admin Panel';
@@ -47,7 +47,7 @@ const WikiModule = {
         el.innerHTML = '<div class="loading-spinner"></div>';
 
         try {
-            const res = await fetch(`${API}/api/wiki/search?q=${encodeURIComponent(query)}`);
+            const res = await authFetch(`${API}/api/wiki/search?q=${encodeURIComponent(query)}`);
             const data = await res.json();
 
             if (!data.results || data.results.length === 0) {
@@ -84,7 +84,7 @@ const WikiModule = {
         el.innerHTML = '<div class="loading-spinner"></div>';
 
         try {
-            const res = await fetch(`${API}/api/wiki/article/${path}`);
+            const res = await authFetch(`${API}/api/wiki/article/${path}`);
             const data = await res.json();
 
             el.innerHTML = `

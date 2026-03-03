@@ -16,6 +16,31 @@
 </head>
 
 <body>
+    <!-- Login Screen -->
+    <div class="login-overlay" id="loginOverlay">
+        <div class="login-card">
+            <div class="login-header">
+                <span class="login-logo">⚡</span>
+                <h1 class="login-title">CyberDeck</h1>
+                <p class="login-subtitle">Enter your credentials to continue</p>
+            </div>
+            <div class="login-form">
+                <div class="login-field">
+                    <label>Username</label>
+                    <input type="text" id="loginUsername" placeholder="username"
+                        onkeydown="if(event.key==='Enter') document.getElementById('loginPassword').focus()">
+                </div>
+                <div class="login-field">
+                    <label>Password</label>
+                    <input type="password" id="loginPassword" placeholder="password"
+                        onkeydown="if(event.key==='Enter') Auth.login()">
+                </div>
+                <div class="login-error" id="loginError" style="display:none"></div>
+                <button class="login-btn" onclick="Auth.login()">Sign In</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Sidebar -->
     <nav class="sidebar" id="sidebar">
         <div class="sidebar-header">
@@ -60,6 +85,11 @@
             </button>
         </div>
         <div class="sidebar-footer">
+            <div class="user-info" id="userInfo" style="display:none">
+                <span class="user-avatar">👤</span>
+                <span class="user-name" id="userName"></span>
+                <button class="logout-btn" onclick="Auth.logout()" title="Logout">⏻</button>
+            </div>
             <div class="connection-status" id="connStatus">
                 <span class="conn-dot"></span>
                 <span class="conn-text">Connected</span>

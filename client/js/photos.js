@@ -23,7 +23,7 @@ const PhotosModule = {
 
     async load() {
         try {
-            const res = await fetch(`${API}/api/photos`);
+            const res = await authFetch(`${API}/api/photos`);
             const data = await res.json();
             this.photos = data.photos || [];
             this.groups = data.groups || [];

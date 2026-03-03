@@ -42,7 +42,7 @@ const LLMModule = {
 
     async checkStatus() {
         try {
-            const res = await fetch(`${API}/api/llm/status`);
+            const res = await authFetch(`${API}/api/llm/status`);
             const data = await res.json();
             const statusEl = document.getElementById('llmStatus');
 
@@ -80,7 +80,7 @@ const LLMModule = {
         this.appendMessage('assistant', '<span style="opacity:0.5">Thinking...</span>', bubbleId);
 
         try {
-            const res = await fetch(`${API}/api/llm/chat`, {
+            const res = await authFetch(`${API}/api/llm/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

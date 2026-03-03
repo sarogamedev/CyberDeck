@@ -27,7 +27,7 @@ const MapsModule = {
 
     async loadMap() {
         try {
-            const res = await fetch(`${API}/api/maps/config`);
+            const res = await authFetch(`${API}/api/maps/config`);
             const config = await res.json();
 
             document.getElementById('mapStatus').textContent =

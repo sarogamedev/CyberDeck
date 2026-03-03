@@ -27,7 +27,7 @@ const VideosModule = {
 
     async load() {
         try {
-            const res = await fetch(`${API}/api/videos`);
+            const res = await authFetch(`${API}/api/videos`);
             const data = await res.json();
             this.videos = data.videos || [];
             this.folders = data.folders || [];

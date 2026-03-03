@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -17,19 +18,131 @@
             --green: #00ff88;
             --red: #ff3366;
             --yellow: #ffaa00;
+            --electric: #6c5ce7;
             --text: #e0e0f0;
             --text-dim: #8888aa;
-            --glow-cyan: 0 0 20px rgba(0,240,255,0.3);
-            --glow-magenta: 0 0 20px rgba(255,0,170,0.3);
+            --glow-cyan: 0 0 20px rgba(0, 240, 255, 0.3);
         }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
         body {
             font-family: 'Inter', sans-serif;
             background: var(--bg);
             color: var(--text);
             min-height: 100vh;
+        }
+
+        /* Login Overlay */
+        .login-overlay {
+            position: fixed;
+            inset: 0;
+            background: var(--bg);
+            z-index: 500;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-image:
+                radial-gradient(ellipse at 20% 50%, rgba(0, 240, 255, 0.06) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 50%, rgba(255, 0, 170, 0.04) 0%, transparent 50%);
+        }
+
+        .login-overlay.hidden {
+            display: none;
+        }
+
+        .login-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 40px;
+            width: 380px;
+            max-width: 90vw;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), var(--glow-cyan);
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 28px;
+        }
+
+        .login-header .icon {
+            font-size: 40px;
+        }
+
+        .login-header h1 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 22px;
+            color: var(--cyan);
+            text-shadow: var(--glow-cyan);
+            margin: 8px 0 4px;
+        }
+
+        .login-header p {
+            color: var(--text-dim);
+            font-size: 13px;
+        }
+
+        .login-field {
+            margin-bottom: 14px;
+        }
+
+        .login-field label {
+            display: block;
+            font-size: 11px;
+            color: var(--text-dim);
+            margin-bottom: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .login-field input {
+            width: 100%;
+            padding: 10px 14px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-size: 14px;
+            outline: none;
+        }
+
+        .login-field input:focus {
+            border-color: var(--cyan);
+        }
+
+        .login-error {
+            background: rgba(255, 51, 102, 0.1);
+            border: 1px solid rgba(255, 51, 102, 0.3);
+            color: var(--red);
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            margin-bottom: 14px;
+            display: none;
+        }
+
+        .login-btn {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #0099bb, var(--electric));
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .login-btn:hover {
+            box-shadow: var(--glow-cyan);
+            transform: translateY(-1px);
         }
 
         /* Header */
@@ -41,35 +154,60 @@
             align-items: center;
             gap: 16px;
         }
+
         .header h1 {
             font-family: 'JetBrains Mono', monospace;
             font-size: 20px;
             color: var(--cyan);
             text-shadow: var(--glow-cyan);
         }
+
         .header .subtitle {
             color: var(--text-dim);
             font-size: 13px;
         }
-        .header .status-badge {
+
+        .header .admin-user {
             margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            color: var(--text-dim);
+        }
+
+        .header .logout-btn {
             padding: 4px 12px;
-            border-radius: 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: transparent;
+            color: var(--text-dim);
             font-size: 12px;
-            font-weight: 600;
-            background: rgba(0,255,136,0.15);
-            color: var(--green);
-            border: 1px solid rgba(0,255,136,0.3);
+            cursor: pointer;
+            font-family: 'JetBrains Mono', monospace;
+            transition: all 0.2s;
+        }
+
+        .header .logout-btn:hover {
+            border-color: var(--red);
+            color: var(--red);
         }
 
         /* Main Layout */
+        .app-content {
+            display: none;
+        }
+
+        .app-content.visible {
+            display: block;
+        }
+
         .container {
             max-width: 1200px;
             margin: 0 auto;
             padding: 24px;
         }
 
-        /* Cards Grid */
         .grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
@@ -84,10 +222,12 @@
             padding: 20px;
             transition: all 0.3s;
         }
+
         .card:hover {
             border-color: var(--cyan);
             box-shadow: var(--glow-cyan);
         }
+
         .card h3 {
             font-family: 'JetBrains Mono', monospace;
             font-size: 14px;
@@ -97,19 +237,33 @@
             align-items: center;
             gap: 8px;
         }
-        .card h3 .icon { font-size: 18px; }
 
-        /* System Stats */
+        .card h3 .icon {
+            font-size: 18px;
+        }
+
+        /* Stats & Services (same as before) */
         .stat-row {
             display: flex;
             justify-content: space-between;
             align-items: center;
             padding: 8px 0;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
         }
-        .stat-row:last-child { border: none; }
-        .stat-label { color: var(--text-dim); font-size: 13px; }
-        .stat-value { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--text); }
+
+        .stat-row:last-child {
+            border: none;
+        }
+
+        .stat-label {
+            color: var(--text-dim);
+            font-size: 13px;
+        }
+
+        .stat-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+        }
 
         .progress-bar {
             width: 100%;
@@ -119,6 +273,7 @@
             overflow: hidden;
             margin-top: 8px;
         }
+
         .progress-fill {
             height: 100%;
             border-radius: 3px;
@@ -126,7 +281,6 @@
             background: linear-gradient(90deg, var(--cyan), var(--magenta));
         }
 
-        /* Service Items */
         .service-item {
             display: flex;
             align-items: center;
@@ -136,27 +290,48 @@
             margin-bottom: 8px;
             gap: 12px;
         }
+
         .service-dot {
             width: 10px;
             height: 10px;
             border-radius: 50%;
             flex-shrink: 0;
         }
+
         .service-dot.running {
             background: var(--green);
-            box-shadow: 0 0 8px rgba(0,255,136,0.5);
+            box-shadow: 0 0 8px rgba(0, 255, 136, 0.5);
             animation: pulse 2s infinite;
         }
-        .service-dot.stopped { background: var(--red); }
-        .service-name { flex: 1; font-size: 14px; font-weight: 500; }
-        .service-port { color: var(--text-dim); font-family: 'JetBrains Mono', monospace; font-size: 12px; }
 
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
+        .service-dot.stopped {
+            background: var(--red);
         }
 
-        /* Buttons */
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        .service-name {
+            flex: 1;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .service-port {
+            color: var(--text-dim);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+        }
+
         .btn {
             padding: 6px 16px;
             border: 1px solid var(--border);
@@ -168,15 +343,53 @@
             transition: all 0.2s;
             font-family: 'JetBrains Mono', monospace;
         }
+
         .btn:hover {
             border-color: var(--cyan);
             color: var(--cyan);
             box-shadow: var(--glow-cyan);
         }
-        .btn.danger:hover { border-color: var(--red); color: var(--red); }
-        .btn.success { border-color: var(--green); color: var(--green); }
 
-        /* Terminal */
+        .btn.danger:hover {
+            border-color: var(--red);
+            color: var(--red);
+        }
+
+        .btn.success {
+            border-color: var(--green);
+            color: var(--green);
+        }
+
+        /* Config & Terminal */
+        .config-field {
+            margin-bottom: 12px;
+        }
+
+        .config-field label {
+            display: block;
+            font-size: 12px;
+            color: var(--text-dim);
+            margin-bottom: 4px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .config-field input,
+        .config-field select {
+            width: 100%;
+            padding: 8px 12px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            font-size: 13px;
+            font-family: 'JetBrains Mono', monospace;
+            outline: none;
+        }
+
+        .config-field input:focus {
+            border-color: var(--cyan);
+        }
+
         .terminal {
             background: #000;
             border: 1px solid var(--border);
@@ -188,24 +401,27 @@
             max-height: 400px;
             overflow-y: auto;
         }
+
         .terminal-output {
             white-space: pre-wrap;
             word-break: break-all;
             color: var(--green);
             line-height: 1.5;
         }
+
         .terminal-input-row {
             display: flex;
             align-items: center;
             gap: 8px;
             margin-top: 8px;
         }
+
         .terminal-prompt {
             color: var(--cyan);
             font-family: 'JetBrains Mono', monospace;
             font-size: 13px;
-            flex-shrink: 0;
         }
+
         .terminal-input {
             flex: 1;
             background: transparent;
@@ -216,75 +432,141 @@
             outline: none;
         }
 
-        /* Config Editor */
-        .config-field {
-            margin-bottom: 12px;
+        /* User Management */
+        .user-table {
+            width: 100%;
+            border-collapse: collapse;
         }
-        .config-field label {
-            display: block;
-            font-size: 12px;
+
+        .user-table th {
+            font-size: 11px;
             color: var(--text-dim);
-            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            text-align: left;
+            padding: 8px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .user-table td {
+            padding: 10px 8px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+            font-size: 13px;
+        }
+
+        .user-table tr:hover td {
+            background: var(--surface2);
+        }
+
+        .role-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
             font-family: 'JetBrains Mono', monospace;
         }
-        .config-field input, .config-field select {
-            width: 100%;
+
+        .role-admin {
+            background: rgba(255, 0, 170, 0.15);
+            color: var(--magenta);
+        }
+
+        .role-user {
+            background: rgba(0, 240, 255, 0.15);
+            color: var(--cyan);
+        }
+
+        .add-user-form {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+            flex-wrap: wrap;
+        }
+
+        .add-user-form input,
+        .add-user-form select {
             padding: 8px 12px;
             background: var(--surface2);
             border: 1px solid var(--border);
             border-radius: 6px;
             color: var(--text);
             font-size: 13px;
-            font-family: 'JetBrains Mono', monospace;
             outline: none;
+            font-family: 'JetBrains Mono', monospace;
         }
-        .config-field input:focus { border-color: var(--cyan); }
 
-        /* Responsive */
+        .add-user-form input:focus {
+            border-color: var(--cyan);
+        }
+
         @media (max-width: 768px) {
-            .grid { grid-template-columns: 1fr; }
-            .container { padding: 12px; }
+            .grid {
+                grid-template-columns: 1fr;
+            }
+
+            .container {
+                padding: 12px;
+            }
         }
     </style>
 </head>
+
 <body>
-    <div class="header">
-        <h1>⚡ CyberDeck Admin</h1>
-        <span class="subtitle">Server Control Panel</span>
-        <span class="status-badge" id="serverStatus">● Online</span>
+    <!-- Admin Login -->
+    <div class="login-overlay" id="loginOverlay">
+        <div class="login-card">
+            <div class="login-header">
+                <div class="icon">🔐</div>
+                <h1>Admin Panel</h1>
+                <p>Admin credentials required</p>
+            </div>
+            <div class="login-field">
+                <label>Username</label>
+                <input type="text" id="loginUser" placeholder="admin"
+                    onkeydown="if(event.key==='Enter') document.getElementById('loginPass').focus()">
+            </div>
+            <div class="login-field">
+                <label>Password</label>
+                <input type="password" id="loginPass" placeholder="password"
+                    onkeydown="if(event.key==='Enter') adminLogin()">
+            </div>
+            <div class="login-error" id="loginError"></div>
+            <button class="login-btn" onclick="adminLogin()">Sign In</button>
+        </div>
     </div>
 
-    <div class="container">
-        <!-- System Stats -->
-        <div class="grid">
-            <div class="card">
-                <h3><span class="icon">📊</span> System Status</h3>
-                <div id="systemStats">
-                    <div class="stat-row">
-                        <span class="stat-label">Platform</span>
-                        <span class="stat-value" id="statPlatform">—</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">CPUs</span>
-                        <span class="stat-value" id="statCpus">—</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Memory</span>
-                        <span class="stat-value" id="statMemory">—</span>
-                    </div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" id="memBar" style="width: 0%"></div>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Uptime</span>
-                        <span class="stat-value" id="statUptime">—</span>
-                    </div>
-                </div>
+    <!-- App Content (hidden until login) -->
+    <div class="app-content" id="appContent">
+        <div class="header">
+            <h1>⚡ CyberDeck Admin</h1>
+            <span class="subtitle">Server Control Panel</span>
+            <div class="admin-user">
+                <span>👤 <span id="adminUsername">admin</span></span>
+                <button class="logout-btn" onclick="adminLogout()">Logout</button>
             </div>
+        </div>
 
-            <div class="card">
-                <h3><span class="icon">🔧</span> Services</h3>
-                <div id="servicesList">
+        <div class="container">
+            <!-- System & Services -->
+            <div class="grid">
+                <div class="card">
+                    <h3><span class="icon">📊</span> System Status</h3>
+                    <div class="stat-row"><span class="stat-label">Platform</span><span class="stat-value"
+                            id="statPlatform">—</span></div>
+                    <div class="stat-row"><span class="stat-label">CPUs</span><span class="stat-value"
+                            id="statCpus">—</span></div>
+                    <div class="stat-row"><span class="stat-label">Memory</span><span class="stat-value"
+                            id="statMemory">—</span></div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="memBar" style="width:0%"></div>
+                    </div>
+                    <div class="stat-row"><span class="stat-label">Uptime</span><span class="stat-value"
+                            id="statUptime">—</span></div>
+                </div>
+                <div class="card">
+                    <h3><span class="icon">🔧</span> Services</h3>
                     <div class="service-item">
                         <div class="service-dot stopped" id="dotOllama"></div>
                         <span class="service-name">Ollama (LLM)</span>
@@ -305,253 +587,331 @@
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Config & Library -->
-        <div class="grid">
-            <div class="card">
-                <h3><span class="icon">⚙️</span> Configuration</h3>
-                <div id="configEditor">
-                    <div class="config-field">
-                        <label>Music Path</label>
-                        <input type="text" id="cfgMusic" value="/sdcard/Music">
+            <!-- User Management & Config -->
+            <div class="grid">
+                <div class="card">
+                    <h3><span class="icon">👥</span> User Management</h3>
+                    <table class="user-table" id="userTable">
+                        <thead>
+                            <tr>
+                                <th>Username</th>
+                                <th>Role</th>
+                                <th>Created</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="userTableBody">
+                            <tr>
+                                <td colspan="4" style="color:var(--text-dim)">Loading...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div class="add-user-form">
+                        <input type="text" id="newUsername" placeholder="username" style="flex:1">
+                        <input type="password" id="newPassword" placeholder="password" style="flex:1">
+                        <select id="newRole">
+                            <option value="user">User</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                        <button class="btn success" onclick="addUser()">+ Add User</button>
                     </div>
-                    <div class="config-field">
-                        <label>Photos Path</label>
-                        <input type="text" id="cfgPhotos" value="/sdcard/DCIM">
-                    </div>
-                    <div class="config-field">
-                        <label>Videos Path</label>
-                        <input type="text" id="cfgVideos" value="/sdcard/Movies">
-                    </div>
-                    <div class="config-field">
-                        <label>Ebooks Path</label>
-                        <input type="text" id="cfgEbooks" value="/sdcard/Books">
-                    </div>
-                    <div class="config-field">
-                        <label>Kiwix ZIM File</label>
-                        <input type="text" id="cfgZim" placeholder="/path/to/wikipedia.zim">
-                    </div>
-                    <div class="config-field">
-                        <label>Map Tiles Path</label>
-                        <input type="text" id="cfgTiles" placeholder="/path/to/tiles">
-                    </div>
-                    <button class="btn success" onclick="saveConfig()" style="margin-top: 8px">Save Configuration</button>
+                </div>
+                <div class="card">
+                    <h3><span class="icon">⚙️</span> Configuration</h3>
+                    <div class="config-field"><label>Music Path</label><input type="text" id="cfgMusic"
+                            value="/sdcard/Music"></div>
+                    <div class="config-field"><label>Photos Path</label><input type="text" id="cfgPhotos"
+                            value="/sdcard/DCIM"></div>
+                    <div class="config-field"><label>Videos Path</label><input type="text" id="cfgVideos"
+                            value="/sdcard/Movies"></div>
+                    <div class="config-field"><label>Ebooks Path</label><input type="text" id="cfgEbooks"
+                            value="/sdcard/Books"></div>
+                    <div class="config-field"><label>Kiwix ZIM File</label><input type="text" id="cfgZim"
+                            placeholder="/path/to/wikipedia.zim"></div>
+                    <div class="config-field"><label>Map Tiles Path</label><input type="text" id="cfgTiles"
+                            placeholder="/path/to/tiles"></div>
+                    <button class="btn success" onclick="saveConfig()" style="margin-top:8px">Save
+                        Configuration</button>
                 </div>
             </div>
 
-            <div class="card">
-                <h3><span class="icon">📂</span> Library Scanner</h3>
-                <div>
-                    <div class="stat-row">
-                        <span class="stat-label">Music Tracks</span>
-                        <span class="stat-value" id="libMusic">—</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Photos</span>
-                        <span class="stat-value" id="libPhotos">—</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Videos</span>
-                        <span class="stat-value" id="libVideos">—</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Ebooks</span>
-                        <span class="stat-value" id="libEbooks">—</span>
-                    </div>
-                    <button class="btn" onclick="scanAll()" style="margin-top: 12px; width: 100%">🔄 Scan All Libraries</button>
+            <!-- Library & Terminal -->
+            <div class="grid">
+                <div class="card">
+                    <h3><span class="icon">📂</span> Library Scanner</h3>
+                    <div class="stat-row"><span class="stat-label">Music Tracks</span><span class="stat-value"
+                            id="libMusic">—</span></div>
+                    <div class="stat-row"><span class="stat-label">Photos</span><span class="stat-value"
+                            id="libPhotos">—</span></div>
+                    <div class="stat-row"><span class="stat-label">Videos</span><span class="stat-value"
+                            id="libVideos">—</span></div>
+                    <div class="stat-row"><span class="stat-label">Ebooks</span><span class="stat-value"
+                            id="libEbooks">—</span></div>
+                    <button class="btn" onclick="scanAll()" style="margin-top:12px;width:100%">🔄 Scan All
+                        Libraries</button>
                 </div>
-            </div>
-        </div>
-
-        <!-- Terminal -->
-        <div class="card">
-            <h3><span class="icon">💻</span> Terminal</h3>
-            <div class="terminal">
-                <div class="terminal-output" id="termOutput">Welcome to CyberDeck Terminal\n$ </div>
-            </div>
-            <div class="terminal-input-row">
-                <span class="terminal-prompt">$</span>
-                <input type="text" class="terminal-input" id="termInput" 
-                       placeholder="Type a command..."
-                       onkeydown="if(event.key==='Enter')runCommand()">
+                <div class="card">
+                    <h3><span class="icon">💻</span> Terminal</h3>
+                    <div class="terminal">
+                        <div class="terminal-output" id="termOutput">Welcome to CyberDeck Terminal\n$ </div>
+                    </div>
+                    <div class="terminal-input-row">
+                        <span class="terminal-prompt">$</span>
+                        <input type="text" class="terminal-input" id="termInput" placeholder="Type a command..."
+                            onkeydown="if(event.key==='Enter')runCommand()">
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
     <script>
         const API = window.location.origin;
+        let TOKEN = localStorage.getItem('cyberdeck_admin_token') || null;
 
-        // Format bytes
-        function fmt(bytes) {
-            if (bytes < 1024) return bytes + ' B';
-            if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-            if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
-            return (bytes / 1073741824).toFixed(1) + ' GB';
+        function authHeaders() {
+            return { 'Content-Type': 'application/json', 'x-auth-token': TOKEN };
         }
 
-        function formatUptime(seconds) {
-            const d = Math.floor(seconds / 86400);
-            const h = Math.floor((seconds % 86400) / 3600);
-            const m = Math.floor((seconds % 3600) / 60);
-            return (d > 0 ? d + 'd ' : '') + h + 'h ' + m + 'm';
+        // ── Admin Login ──
+        async function adminLogin() {
+            const username = document.getElementById('loginUser').value.trim();
+            const password = document.getElementById('loginPass').value;
+            const errEl = document.getElementById('loginError');
+
+            if (!username || !password) {
+                errEl.textContent = 'Enter username and password';
+                errEl.style.display = 'block'; return;
+            }
+
+            try {
+                const res = await fetch(`${API}/api/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+                if (!res.ok) { errEl.textContent = data.error; errEl.style.display = 'block'; return; }
+                if (data.user.role !== 'admin') { errEl.textContent = 'Admin access required'; errEl.style.display = 'block'; return; }
+
+                TOKEN = data.token;
+                localStorage.setItem('cyberdeck_admin_token', TOKEN);
+                document.getElementById('adminUsername').textContent = data.user.username;
+                showApp();
+            } catch (e) {
+                errEl.textContent = 'Cannot connect to server';
+                errEl.style.display = 'block';
+            }
         }
 
-        // Load system stats
+        function adminLogout() {
+            fetch(`${API}/api/auth/logout`, { method: 'POST', headers: { 'x-auth-token': TOKEN } }).catch(() => { });
+            TOKEN = null;
+            localStorage.removeItem('cyberdeck_admin_token');
+            document.getElementById('loginOverlay').classList.remove('hidden');
+            document.getElementById('appContent').classList.remove('visible');
+        }
+
+        async function checkSession() {
+            if (!TOKEN) return false;
+            try {
+                const res = await fetch(`${API}/api/auth/me`, { headers: { 'x-auth-token': TOKEN } });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.role === 'admin') {
+                        document.getElementById('adminUsername').textContent = data.username;
+                        return true;
+                    }
+                }
+            } catch { }
+            TOKEN = null;
+            localStorage.removeItem('cyberdeck_admin_token');
+            return false;
+        }
+
+        function showApp() {
+            document.getElementById('loginOverlay').classList.add('hidden');
+            document.getElementById('appContent').classList.add('visible');
+            loadSystem(); loadServices(); loadConfig(); loadLibraryCounts(); loadUsers();
+        }
+
+        // ── Authenticated fetch ──
+        async function adminFetch(url, opts = {}) {
+            if (!opts.headers) opts.headers = {};
+            opts.headers['x-auth-token'] = TOKEN;
+            const res = await fetch(url, opts);
+            if (res.status === 401 || res.status === 403) { adminLogout(); throw new Error('Session expired'); }
+            return res;
+        }
+
+        // ── User Management ──
+        async function loadUsers() {
+            try {
+                const res = await adminFetch(`${API}/api/auth/users`);
+                const users = await res.json();
+                const tbody = document.getElementById('userTableBody');
+                tbody.innerHTML = users.map(u => `
+                    <tr>
+                        <td><strong>${u.username}</strong></td>
+                        <td><span class="role-badge role-${u.role}">${u.role}</span></td>
+                        <td style="color:var(--text-dim)">${u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '—'}</td>
+                        <td>
+                            <button class="btn" onclick="changeUserPass('${u.username}')" style="font-size:11px">🔑</button>
+                            ${u.username !== 'admin' ? `<button class="btn danger" onclick="deleteUser('${u.username}')" style="font-size:11px">🗑</button>` : ''}
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (e) { console.error(e); }
+        }
+
+        async function addUser() {
+            const username = document.getElementById('newUsername').value.trim();
+            const password = document.getElementById('newPassword').value;
+            const role = document.getElementById('newRole').value;
+            if (!username || !password) { alert('Username and password required'); return; }
+            try {
+                const res = await adminFetch(`${API}/api/auth/users`, {
+                    method: 'POST',
+                    headers: authHeaders(),
+                    body: JSON.stringify({ username, password, role })
+                });
+                const data = await res.json();
+                if (data.error) { alert(data.error); return; }
+                document.getElementById('newUsername').value = '';
+                document.getElementById('newPassword').value = '';
+                loadUsers();
+            } catch (e) { alert('Error: ' + e.message); }
+        }
+
+        async function deleteUser(username) {
+            if (!confirm(`Delete user "${username}"?`)) return;
+            try {
+                await adminFetch(`${API}/api/auth/users/${username}`, { method: 'DELETE' });
+                loadUsers();
+            } catch (e) { alert('Error: ' + e.message); }
+        }
+
+        async function changeUserPass(username) {
+            const newPass = prompt(`New password for "${username}":`);
+            if (!newPass) return;
+            try {
+                await adminFetch(`${API}/api/auth/users/${username}/password`, {
+                    method: 'PUT',
+                    headers: authHeaders(),
+                    body: JSON.stringify({ password: newPass })
+                });
+                alert('Password updated!');
+            } catch (e) { alert('Error: ' + e.message); }
+        }
+
+        // ── System, Services, Config, Library, Terminal (same as before) ──
+        function fmt(b) { if (b < 1024) return b + ' B'; if (b < 1048576) return (b / 1024).toFixed(1) + ' KB'; if (b < 1073741824) return (b / 1048576).toFixed(1) + ' MB'; return (b / 1073741824).toFixed(1) + ' GB'; }
+        function fmtUp(s) { const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60); return (d > 0 ? d + 'd ' : '') + h + 'h ' + m + 'm'; }
+
         async function loadSystem() {
             try {
-                const res = await fetch(`${API}/api/system`);
-                const data = await res.json();
-                document.getElementById('statPlatform').textContent = `${data.platform} / ${data.arch}`;
-                document.getElementById('statCpus').textContent = data.cpus;
-                document.getElementById('statMemory').textContent = `${fmt(data.memory.used)} / ${fmt(data.memory.total)}`;
-                document.getElementById('memBar').style.width = data.memory.percent + '%';
-                document.getElementById('statUptime').textContent = formatUptime(data.uptime);
-            } catch (e) {
-                document.getElementById('serverStatus').textContent = '● Offline';
-                document.getElementById('serverStatus').style.color = 'var(--red)';
-            }
+                const res = await adminFetch(`${API}/api/system`);
+                const d = await res.json();
+                document.getElementById('statPlatform').textContent = `${d.platform} / ${d.arch}`;
+                document.getElementById('statCpus').textContent = d.cpus;
+                document.getElementById('statMemory').textContent = `${fmt(d.memory.used)} / ${fmt(d.memory.total)}`;
+                document.getElementById('memBar').style.width = d.memory.percent + '%';
+                document.getElementById('statUptime').textContent = fmtUp(d.uptime);
+            } catch (e) { console.error(e); }
         }
 
-        // Load service status
         async function loadServices() {
             try {
-                const res = await fetch(`${API}/api/services/status`);
-                const data = await res.json();
-
-                const updateDot = (id, running) => {
-                    const dot = document.getElementById(id);
-                    dot.className = `service-dot ${running ? 'running' : 'stopped'}`;
-                    const btn = dot.parentElement.querySelector('.btn');
-                    if (btn && btn.onclick) btn.textContent = running ? 'Stop' : 'Start';
-                };
-
-                updateDot('dotOllama', data.ollama.running);
-                updateDot('dotKiwix', data.kiwix.running);
-                updateDot('dotMaps', data.maps.running);
+                const res = await adminFetch(`${API}/api/services/status`);
+                const d = await res.json();
+                const upd = (id, r) => { const dot = document.getElementById(id); dot.className = `service-dot ${r ? 'running' : 'stopped'}`; const b = dot.parentElement.querySelector('.btn'); if (b && b.onclick) b.textContent = r ? 'Stop' : 'Start'; };
+                upd('dotOllama', d.ollama.running);
+                upd('dotKiwix', d.kiwix.running);
+                upd('dotMaps', d.maps.running);
             } catch (e) { console.error(e); }
         }
 
-        // Toggle service
         async function toggleService(name) {
             const dot = document.getElementById('dot' + name.charAt(0).toUpperCase() + name.slice(1));
-            const isRunning = dot.classList.contains('running');
-            const action = isRunning ? 'stop' : 'start';
-            try {
-                await fetch(`${API}/api/services/${name}/${action}`, { method: 'POST' });
-                setTimeout(loadServices, 1500);
-            } catch (e) { console.error(e); }
+            const action = dot.classList.contains('running') ? 'stop' : 'start';
+            try { await adminFetch(`${API}/api/services/${name}/${action}`, { method: 'POST' }); setTimeout(loadServices, 1500); } catch (e) { console.error(e); }
         }
 
-        // Save config
         async function saveConfig() {
-            const config = {
-                paths: {
-                    music: document.getElementById('cfgMusic').value,
-                    photos: document.getElementById('cfgPhotos').value,
-                    videos: document.getElementById('cfgVideos').value,
-                    ebooks: document.getElementById('cfgEbooks').value,
-                },
-                services: {
-                    kiwix: { zimFile: document.getElementById('cfgZim').value },
-                    maps: { tilesPath: document.getElementById('cfgTiles').value }
-                }
-            };
             try {
-                await fetch(`${API}/api/config`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(config)
+                await adminFetch(`${API}/api/config`, {
+                    method: 'PUT', headers: authHeaders(),
+                    body: JSON.stringify({
+                        paths: { music: document.getElementById('cfgMusic').value, photos: document.getElementById('cfgPhotos').value, videos: document.getElementById('cfgVideos').value, ebooks: document.getElementById('cfgEbooks').value },
+                        services: { kiwix: { zimFile: document.getElementById('cfgZim').value }, maps: { tilesPath: document.getElementById('cfgTiles').value } }
+                    })
                 });
                 alert('Configuration saved!');
-            } catch (e) { alert('Error saving config: ' + e.message); }
+            } catch (e) { alert('Error: ' + e.message); }
         }
 
-        // Load config
         async function loadConfig() {
             try {
-                const res = await fetch(`${API}/api/config`);
-                const cfg = await res.json();
-                document.getElementById('cfgMusic').value = cfg.paths?.music || '';
-                document.getElementById('cfgPhotos').value = cfg.paths?.photos || '';
-                document.getElementById('cfgVideos').value = cfg.paths?.videos || '';
-                document.getElementById('cfgEbooks').value = cfg.paths?.ebooks || '';
-                document.getElementById('cfgZim').value = cfg.services?.kiwix?.zimFile || '';
-                document.getElementById('cfgTiles').value = cfg.services?.maps?.tilesPath || '';
+                const res = await adminFetch(`${API}/api/config`);
+                const c = await res.json();
+                document.getElementById('cfgMusic').value = c.paths?.music || '';
+                document.getElementById('cfgPhotos').value = c.paths?.photos || '';
+                document.getElementById('cfgVideos').value = c.paths?.videos || '';
+                document.getElementById('cfgEbooks').value = c.paths?.ebooks || '';
+                document.getElementById('cfgZim').value = c.services?.kiwix?.zimFile || '';
+                document.getElementById('cfgTiles').value = c.services?.maps?.tilesPath || '';
             } catch (e) { console.error(e); }
         }
 
-        // Scan libraries
         async function scanAll() {
-            const endpoints = ['music', 'photos', 'videos', 'ebooks'];
-            const ids = ['libMusic', 'libPhotos', 'libVideos', 'libEbooks'];
-            for (let i = 0; i < endpoints.length; i++) {
+            const eps = ['music', 'photos', 'videos', 'ebooks'], ids = ['libMusic', 'libPhotos', 'libVideos', 'libEbooks'];
+            for (let i = 0; i < eps.length; i++) {
                 try {
-                    document.getElementById(ids[i]).textContent = '⏳ scanning...';
-                    const res = await fetch(`${API}/api/${endpoints[i]}/scan`, { method: 'POST' });
-                    const data = await res.json();
-                    document.getElementById(ids[i]).textContent = data.total ?? '?';
-                } catch (e) {
-                    document.getElementById(ids[i]).textContent = 'error';
-                }
+                    document.getElementById(ids[i]).textContent = '⏳';
+                    const res = await adminFetch(`${API}/api/${eps[i]}/scan`, { method: 'POST' });
+                    const d = await res.json();
+                    document.getElementById(ids[i]).textContent = d.total ?? '?';
+                } catch { document.getElementById(ids[i]).textContent = 'error'; }
             }
         }
 
-        // Load library counts
         async function loadLibraryCounts() {
-            const endpoints = [
-                { url: 'music', id: 'libMusic', key: 'total' },
-                { url: 'photos', id: 'libPhotos', key: 'total' },
-                { url: 'videos', id: 'libVideos', key: 'total' },
-                { url: 'ebooks', id: 'libEbooks', key: 'total' }
-            ];
-            for (const ep of endpoints) {
-                try {
-                    const res = await fetch(`${API}/api/${ep.url}`);
-                    const data = await res.json();
-                    document.getElementById(ep.id).textContent = data[ep.key] ?? 0;
-                } catch (e) {
-                    document.getElementById(ep.id).textContent = '—';
-                }
+            for (const [url, id] of [['music', 'libMusic'], ['photos', 'libPhotos'], ['videos', 'libVideos'], ['ebooks', 'libEbooks']]) {
+                try { const r = await adminFetch(`${API}/api/${url}`); const d = await r.json(); document.getElementById(id).textContent = d.total ?? 0; }
+                catch { document.getElementById(id).textContent = '—'; }
             }
         }
 
-        // Terminal
         async function runCommand() {
             const input = document.getElementById('termInput');
             const output = document.getElementById('termOutput');
             const cmd = input.value.trim();
             if (!cmd) return;
-
-            output.textContent += cmd + '\n';
-            input.value = '';
-
+            output.textContent += cmd + '\n'; input.value = '';
             try {
-                const res = await fetch(`${API}/api/terminal`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ command: cmd })
-                });
-                const data = await res.json();
-                if (data.stdout) output.textContent += data.stdout;
-                if (data.stderr) output.textContent += data.stderr;
-            } catch (e) {
-                output.textContent += 'Error: ' + e.message + '\n';
-            }
-
+                const r = await adminFetch(`${API}/api/terminal`, { method: 'POST', headers: authHeaders(), body: JSON.stringify({ command: cmd }) });
+                const d = await r.json();
+                if (d.stdout) output.textContent += d.stdout;
+                if (d.stderr) output.textContent += d.stderr;
+            } catch (e) { output.textContent += 'Error: ' + e.message + '\n'; }
             output.textContent += '$ ';
             output.parentElement.scrollTop = output.parentElement.scrollHeight;
         }
 
-        // Init
-        loadSystem();
-        loadServices();
-        loadConfig();
-        loadLibraryCounts();
+        // ── Init ──
+        (async () => {
+            const valid = await checkSession();
+            if (valid) showApp();
+            else {
+                document.getElementById('loginOverlay').classList.remove('hidden');
+                document.getElementById('loginUser').focus();
+            }
+        })();
 
-        // Auto-refresh
         setInterval(loadSystem, 10000);
         setInterval(loadServices, 15000);
     </script>
 </body>
+
 </html>

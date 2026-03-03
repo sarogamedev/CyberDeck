@@ -3,6 +3,7 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { requireAuth, requireAdmin } = require('./utils/auth');
 
 // Load config
 const configPath = path.join(__dirname, 'config.json');
@@ -21,22 +22,25 @@ app.use('/', express.static(path.join(__dirname, '..', 'client')));
 // Serve admin panel
 app.use('/admin', express.static(path.join(__dirname, 'admin')));
 
-// API Routes
-app.use('/api/music', require('./routes/music')(config));
-app.use('/api/photos', require('./routes/photos')(config));
-app.use('/api/videos', require('./routes/videos')(config));
-app.use('/api/llm', require('./routes/llm')(config));
-app.use('/api/wiki', require('./routes/wiki')(config));
-app.use('/api/maps', require('./routes/maps')(config));
-app.use('/api/ebooks', require('./routes/ebooks')(config));
-app.use('/api/files', require('./routes/files')(config));
+// Auth routes (public - no middleware)
+app.use('/api/auth', require('./routes/auth')(config));
 
-// Config API (for admin panel)
-app.get('/api/config', (req, res) => {
+// Protected API Routes (require login)
+app.use('/api/music', requireAuth, require('./routes/music')(config));
+app.use('/api/photos', requireAuth, require('./routes/photos')(config));
+app.use('/api/videos', requireAuth, require('./routes/videos')(config));
+app.use('/api/llm', requireAuth, require('./routes/llm')(config));
+app.use('/api/wiki', requireAuth, require('./routes/wiki')(config));
+app.use('/api/maps', requireAuth, require('./routes/maps')(config));
+app.use('/api/ebooks', requireAuth, require('./routes/ebooks')(config));
+app.use('/api/files', requireAuth, require('./routes/files')(config));
+
+// Config API (admin only)
+app.get('/api/config', requireAdmin, (req, res) => {
     res.json(config);
 });
 
-app.put('/api/config', (req, res) => {
+app.put('/api/config', requireAdmin, (req, res) => {
     try {
         config = { ...config, ...req.body };
         fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
@@ -46,8 +50,8 @@ app.put('/api/config', (req, res) => {
     }
 });
 
-// System status API
-app.get('/api/system', (req, res) => {
+// System status API (admin only)
+app.get('/api/system', requireAdmin, (req, res) => {
     const totalMem = os.totalmem();
     const freeMem = os.freemem();
     res.json({
@@ -66,8 +70,8 @@ app.get('/api/system', (req, res) => {
     });
 });
 
-// Service management API
-app.post('/api/services/:name/start', (req, res) => {
+// Service management API (admin only)
+app.post('/api/services/:name/start', requireAdmin, (req, res) => {
     const { name } = req.params;
     const { exec } = require('child_process');
 
@@ -88,7 +92,7 @@ app.post('/api/services/:name/start', (req, res) => {
     });
 });
 
-app.post('/api/services/:name/stop', (req, res) => {
+app.post('/api/services/:name/stop', requireAdmin, (req, res) => {
     const { name } = req.params;
     const { exec } = require('child_process');
 
@@ -107,7 +111,7 @@ app.post('/api/services/:name/stop', (req, res) => {
     });
 });
 
-app.get('/api/services/status', async (req, res) => {
+app.get('/api/services/status', requireAdmin, async (req, res) => {
     const { exec } = require('child_process');
     const checkProcess = (name) => new Promise((resolve) => {
         exec(`pgrep -f "${name}"`, (err) => resolve(!err));
@@ -125,8 +129,8 @@ app.get('/api/services/status', async (req, res) => {
     });
 });
 
-// Terminal command execution (for admin panel)
-app.post('/api/terminal', (req, res) => {
+// Terminal command execution (admin only)
+app.post('/api/terminal', requireAdmin, (req, res) => {
     const { command } = req.body;
     if (!command) return res.status(400).json({ error: 'No command provided' });
 

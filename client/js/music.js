@@ -28,7 +28,7 @@ const MusicModule = {
 
     async load() {
         try {
-            const res = await fetch(`${API}/api/music`);
+            const res = await authFetch(`${API}/api/music`);
             const data = await res.json();
             this.tracks = data.tracks || [];
             this.albums = data.albums || [];

@@ -33,7 +33,7 @@ const FilesModule = {
         document.getElementById('filesContent').innerHTML = '<div class="loading-spinner"></div>';
 
         try {
-            const res = await fetch(`${API}/api/files?path=${encodeURIComponent(dirPath)}`);
+            const res = await authFetch(`${API}/api/files?path=${encodeURIComponent(dirPath)}`);
             const data = await res.json();
 
             this.items = data.items || [];
@@ -172,7 +172,7 @@ const FilesModule = {
     async deleteItem(filePath, name) {
         if (!confirm(`Delete "${name}"?`)) return;
         try {
-            await fetch(`${API}/api/files?path=${encodeURIComponent(filePath)}`, { method: 'DELETE' });
+            await authFetch(`${API}/api/files?path=${encodeURIComponent(filePath)}`, { method: 'DELETE' });
             await this.browse(this.currentPath);
         } catch (err) {
             alert('Delete failed: ' + err.message);
@@ -184,7 +184,7 @@ const FilesModule = {
         if (!name) return;
         const newPath = this.currentPath ? `${this.currentPath}/${name}` : name;
         try {
-            await fetch(`${API}/api/files/mkdir`, {
+            await authFetch(`${API}/api/files/mkdir`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ path: newPath })
@@ -203,7 +203,7 @@ const FilesModule = {
             formData.append('files', file);
         }
         try {
-            await fetch(`${API}/api/files/upload`, { method: 'POST', body: formData });
+            await authFetch(`${API}/api/files/upload`, { method: 'POST', body: formData });
             await this.browse(this.currentPath);
         } catch (err) {
             alert('Upload failed: ' + err.message);

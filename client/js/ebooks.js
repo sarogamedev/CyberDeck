@@ -28,7 +28,7 @@ const EbooksModule = {
 
     async load() {
         try {
-            const res = await fetch(`${API}/api/ebooks`);
+            const res = await authFetch(`${API}/api/ebooks`);
             const data = await res.json();
             this.books = data.books || [];
             this.filteredBooks = [...this.books];
