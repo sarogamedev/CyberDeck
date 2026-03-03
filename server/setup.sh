@@ -69,11 +69,25 @@ success "Core dependencies installed"
 
 # ── Navigate to project ──
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Check if running from /sdcard (doesn't support symlinks)
+if echo "$SCRIPT_DIR" | grep -q '/storage/emulated'; then
+    warn "Project is on /sdcard which doesn't support symlinks."
+    echo "  Copying project to Termux home directory for compatibility..."
+    DEST="$HOME/CyberDeck/server"
+    mkdir -p "$HOME/CyberDeck"
+    cp -r "$(dirname "$SCRIPT_DIR")/server" "$HOME/CyberDeck/"
+    cp -r "$(dirname "$SCRIPT_DIR")/client" "$HOME/CyberDeck/"
+    cp "$(dirname "$SCRIPT_DIR")/README.md" "$HOME/CyberDeck/" 2>/dev/null
+    SCRIPT_DIR="$DEST"
+    success "Project copied to $HOME/CyberDeck"
+    echo "  ➤ Run the server from: ${BOLD}$DEST${NC}"
+fi
 cd "$SCRIPT_DIR"
 
 # ── NPM Install ──
 step "Installing Node.js dependencies..."
-npm install
+npm install --no-bin-links
 success "Node.js dependencies installed"
 
 # ── Create cache directory ──
