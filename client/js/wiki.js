@@ -97,7 +97,6 @@ const WikiModule = {
             const reqBaseUrl = new URL(`${apiBase}/api/wiki/asset/${path}`);
             const linkBaseUrl = new URL(`${apiBase}/api/wiki/article/${path}`);
 
-            // Fix all assets (images, stylesheets, videos)
             articleEl.querySelectorAll('img, source, link[rel="stylesheet"]').forEach(node => {
                 const attr = node.tagName === 'LINK' ? 'href' : 'src';
                 let val = node.getAttribute(attr);
@@ -111,6 +110,17 @@ const WikiModule = {
                     const resolved = new URL(val, reqBaseUrl);
                     node.setAttribute(attr, resolved.href);
                 }
+            });
+
+            // Strip out annoying LaTeX fallback text that leaks on mobile/broken images
+            articleEl.querySelectorAll('.mwe-math-fallback-source-inline, .mwe-math-fallback-source-display').forEach(node => {
+                node.remove(); // Nuke the raw LaTeX from the DOM completely
+            });
+
+            // Make math fallback images visible but unstyled if they lack an explicit class
+            articleEl.querySelectorAll('img.mwe-math-fallback-image-inline').forEach(node => {
+                node.style.display = 'inline-block';
+                node.style.verticalAlign = 'middle';
             });
 
             // Make internal links work and intercept clicks

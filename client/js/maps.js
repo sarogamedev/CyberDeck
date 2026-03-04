@@ -45,22 +45,18 @@ const MapsModule = {
             const config = await res.json();
 
             this.currentConfig = config;
-            this.baseTileUrl = config.tileUrl;
+            this.baseTileUrl = config.tileUrl || 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
             this.onlineTileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
             this.forceOnline = false;
 
             document.getElementById('mapStatus').textContent =
-                config.enabled ? 'Offline tiles loaded' : 'Using online tiles (OSM)';
-
-            if (!config.enabled) {
-                document.getElementById('btn-toggle-maps').style.display = 'none';
-            }
+                config.enabled && config.tileUrl ? 'Offline tiles loaded' : 'Using online tiles (OSM)';
 
             // Initialize Leaflet
-            this.map = L.map('mapContainer').setView(config.defaultCenter, config.defaultZoom);
+            this.map = L.map('mapContainer').setView(config.defaultCenter || [20.5937, 78.9629], config.defaultZoom || 5);
 
-            this.tileLayer = L.tileLayer(config.tileUrl, {
-                attribution: config.attribution,
+            this.tileLayer = L.tileLayer(this.baseTileUrl, {
+                attribution: config.attribution || '© OpenStreetMap contributors',
                 maxZoom: 19,
                 errorTileUrl: ''
             }).addTo(this.map);
@@ -90,7 +86,7 @@ const MapsModule = {
             document.getElementById('btn-toggle-maps').textContent = '📵 Use Offline Maps';
         } else {
             this.tileLayer.setUrl(this.baseTileUrl);
-            document.getElementById('mapStatus').textContent = this.currentConfig.enabled ? 'Offline tiles loaded' : 'Using online tiles (OSM)';
+            document.getElementById('mapStatus').textContent = (this.currentConfig.enabled && this.currentConfig.tileUrl) ? 'Offline tiles loaded' : 'Using online tiles (OSM)';
             document.getElementById('btn-toggle-maps').textContent = '🌍 Enable Online Maps';
         }
     },
