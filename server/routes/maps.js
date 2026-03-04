@@ -5,10 +5,18 @@ const fs = require('fs');
 module.exports = function (config) {
     const router = express.Router();
 
+    // Helper: resolve tilesPath relative to server dir
+    function resolveMapPath(tilesDir) {
+        if (!tilesDir) return '';
+        if (path.isAbsolute(tilesDir)) return tilesDir;
+        return path.join(__dirname, '..', tilesDir);
+    }
+
     // Get map configuration
     router.get('/config', (req, res) => {
         const tilesDir = config.services.maps.tilesPath;
-        const hasOfflineTiles = !!(tilesDir && fs.existsSync(tilesDir));
+        const resolvedDir = resolveMapPath(tilesDir);
+        const hasOfflineTiles = !!(resolvedDir && fs.existsSync(resolvedDir));
 
         res.json({
             enabled: config.services.maps.enabled,
@@ -34,8 +42,8 @@ module.exports = function (config) {
             return res.status(404).json({ error: 'No local tiles configured' });
         }
 
-        // Resolve to absolute path
-        const absDir = path.resolve(tilesDir);
+        // Resolve to absolute path (relative paths are resolved from server/ dir)
+        const absDir = resolveMapPath(tilesDir);
 
         // Try common tile directory structures
         const possiblePaths = [
@@ -142,7 +150,8 @@ module.exports = function (config) {
                 // Enforce map config path change and enable it
                 let configChanged = false;
                 if (!config.services.maps.tilesPath) {
-                    config.services.maps.tilesPath = destDir;
+                    // Store as relative path for portability
+                    config.services.maps.tilesPath = './downloads/maps';
                     configChanged = true;
                 }
                 if (!config.services.maps.enabled) {
@@ -154,7 +163,10 @@ module.exports = function (config) {
                     try {
                         const configPath = path.join(__dirname, '..', 'config.json');
                         fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-                    } catch (e) { }
+                        console.log('[Maps] Config updated: tilesPath=' + config.services.maps.tilesPath);
+                    } catch (e) {
+                        console.error('[Maps] Failed to write config.json:', e.message);
+                    }
                 }
             }
         })();

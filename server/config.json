@@ -19,8 +19,8 @@
             "zimFile": ""
         },
         "maps": {
-            "tilesPath": "",
-            "enabled": false,
+            "tilesPath": "./downloads/maps",
+            "enabled": true,
             "defaultCenter": [
                 20.5937,
                 78.9629
