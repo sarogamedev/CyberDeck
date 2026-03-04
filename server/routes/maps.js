@@ -128,9 +128,19 @@ module.exports = function (config) {
             const finalState = activeTileDownloads.get(dlId);
             if (finalState && finalState.status !== 'cancelled') {
                 activeTileDownloads.set(dlId, { status: 'complete', downloaded: tiles.length, total: tiles.length });
-                // Enforce map config path change
+
+                // Enforce map config path change and enable it
+                let configChanged = false;
                 if (!config.services.maps.tilesPath) {
                     config.services.maps.tilesPath = destDir;
+                    configChanged = true;
+                }
+                if (!config.services.maps.enabled) {
+                    config.services.maps.enabled = true;
+                    configChanged = true;
+                }
+
+                if (configChanged) {
                     try {
                         const configPath = path.join(__dirname, '..', 'config.json');
                         fs.writeFileSync(configPath, JSON.stringify(config, null, 2));

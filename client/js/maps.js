@@ -173,7 +173,13 @@ const MapsModule = {
                 text.textContent = 'Complete! Offline tiles are ready.';
                 document.getElementById('btn-dl-map').disabled = false;
                 document.getElementById('btn-dl-map').textContent = '📥 Download Region';
-                setTimeout(() => this.loadMap(), 2000); // Reload map to use new tiles
+
+                // Reload map and hide the progress bar after 2 seconds
+                setTimeout(() => {
+                    this.activeDlId = null;
+                    document.getElementById('mapDlProgress').style.display = 'none';
+                    this.loadMap();
+                }, 2000);
             } else if (data.status === 'error') {
                 fill.style.background = 'var(--red)';
                 text.textContent = 'Failed';
