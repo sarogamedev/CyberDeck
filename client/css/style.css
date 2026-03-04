@@ -2169,3 +2169,22 @@ body {
         grid-template-columns: 1fr;
     }
 }
+
+/* ═══════════════════════════════════════════
+   WIKIPEDIA CONTENT FIXES
+   ═══════════════════════════════════════════ */
+.wiki-article .mwe-math-fallback-image-inline,
+.wiki-article .mwe-math-fallback-image-display {
+    display: inline-block;
+}
+
+.wiki-article .mwe-math-fallback-source-inline,
+.wiki-article .mwe-math-fallback-source-display {
+    display: none !important;
+    /* Hides raw LaTeX source code */
+}
+
+/* Fallback for missing images in Simple English wiki so it doesn't show a broken image alt text dump */
+.wiki-article img {
+    color: transparent;
+}

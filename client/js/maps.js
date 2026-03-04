@@ -15,6 +15,7 @@ const MapsModule = {
                 </div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;">
                     <button class="btn" onclick="MapsModule.locateMe()">📍 My Location</button>
+                    <button class="btn" id="btn-toggle-maps" onclick="MapsModule.toggleOnline()">🌍 Enable Online Maps</button>
                     <button class="btn btn-primary" id="btn-dl-map" onclick="MapsModule.downloadRegion()">📥 Download Region</button>
                 </div>
             </div>
@@ -43,13 +44,22 @@ const MapsModule = {
             const res = await authFetch(`${API}/api/maps/config`);
             const config = await res.json();
 
+            this.currentConfig = config;
+            this.baseTileUrl = config.tileUrl;
+            this.onlineTileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+            this.forceOnline = false;
+
             document.getElementById('mapStatus').textContent =
                 config.enabled ? 'Offline tiles loaded' : 'Using online tiles (OSM)';
+
+            if (!config.enabled) {
+                document.getElementById('btn-toggle-maps').style.display = 'none';
+            }
 
             // Initialize Leaflet
             this.map = L.map('mapContainer').setView(config.defaultCenter, config.defaultZoom);
 
-            L.tileLayer(config.tileUrl, {
+            this.tileLayer = L.tileLayer(config.tileUrl, {
                 attribution: config.attribution,
                 maxZoom: 19,
                 errorTileUrl: ''
@@ -67,6 +77,21 @@ const MapsModule = {
                 maxZoom: 19
             }).addTo(this.map);
             setTimeout(() => this.map.invalidateSize(), 200);
+        }
+    },
+
+    toggleOnline() {
+        if (!this.tileLayer) return;
+        this.forceOnline = !this.forceOnline;
+
+        if (this.forceOnline) {
+            this.tileLayer.setUrl(this.onlineTileUrl);
+            document.getElementById('mapStatus').textContent = 'Using online tiles (Forced)';
+            document.getElementById('btn-toggle-maps').textContent = '📵 Use Offline Maps';
+        } else {
+            this.tileLayer.setUrl(this.baseTileUrl);
+            document.getElementById('mapStatus').textContent = this.currentConfig.enabled ? 'Offline tiles loaded' : 'Using online tiles (OSM)';
+            document.getElementById('btn-toggle-maps').textContent = '🌍 Enable Online Maps';
         }
     },
 
