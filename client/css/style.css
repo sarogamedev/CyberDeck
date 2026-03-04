@@ -2175,16 +2175,24 @@ body {
    ═══════════════════════════════════════════ */
 .wiki-article .mwe-math-fallback-image-inline,
 .wiki-article .mwe-math-fallback-image-display {
-    display: inline-block;
+    display: inline-block !important;
 }
 
 .wiki-article .mwe-math-fallback-source-inline,
 .wiki-article .mwe-math-fallback-source-display {
     display: none !important;
-    /* Hides raw LaTeX source code */
+    font-size: 0 !important;
+    opacity: 0 !important;
+}
+
+/* Sometimes Kiwix injects raw mathml that browsers try to render as text */
+.wiki-article .mwe-math-mathml-inline,
+.wiki-article .mwe-math-mathml-display {
+    display: none !important;
 }
 
 /* Fallback for missing images in Simple English wiki so it doesn't show a broken image alt text dump */
 .wiki-article img {
     color: transparent;
+    font-size: 0;
 }

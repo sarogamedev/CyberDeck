@@ -40,6 +40,11 @@ const MapsModule = {
     },
 
     async loadMap() {
+        if (this.map) {
+            this.map.remove();
+            this.map = null;
+        }
+
         try {
             const res = await authFetch(`${API}/api/maps/config`);
             const config = await res.json();
