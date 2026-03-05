@@ -6,6 +6,7 @@ const ChatModule = {
     ws: null,
     messages: [],
     users: [],
+    sessionId: Math.random().toString(36).substring(2, 15),
 
     init() {
         const el = document.getElementById('mod-chat');
@@ -58,6 +59,7 @@ const ChatModule = {
                             this.ws.send(JSON.stringify({
                                 type: 'dtn-sync',
                                 from: Auth.user?.username || 'Anonymous',
+                                sessionId: this.sessionId,
                                 dtnPayload: data.packets
                             }));
                         }
@@ -118,7 +120,7 @@ const ChatModule = {
             case 'dtn-sync':
                 // Someone sent DTN packets through the WebSocket!
                 // Skip our own broadcasts
-                if (msg.from === (Auth.user?.username || 'Anonymous')) break;
+                if (msg.sessionId === this.sessionId) break;
 
                 // Silently push them to our local spool
                 if (msg.dtnPayload && msg.dtnPayload.length > 0) {

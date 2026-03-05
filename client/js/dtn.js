@@ -108,6 +108,7 @@ const DtnModule = {
                     window.ChatModule.ws.send(JSON.stringify({
                         type: 'dtn-sync',
                         from: Auth.user?.username || 'Anonymous',
+                        sessionId: window.ChatModule.sessionId,
                         dtnPayload: [data.packet]
                     }));
                 }
