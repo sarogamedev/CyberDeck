@@ -63,9 +63,9 @@ const MeshModule = {
                     <p style="color: var(--text-dim); font-size: 13px; margin-bottom: 20px;">
                         Transmit text messages through the air using Frequency Shift Keying (MFSK). Requires no Wi-Fi or Bluetooth.
                     </p>
-                    <div class="search-box" style="max-width: 100%; margin-bottom: 15px; padding-right: 4px;">
+                    <div class="search-box" style="display: flex; flex-wrap: wrap; max-width: 100%; margin-bottom: 15px; padding-right: 4px;">
                         <span class="search-icon">🎵</span>
-                        <input type="text" id="meshTxInput" placeholder="Enter message to transmit (e.g. SOS, GPS Coords)">
+                        <input type="text" id="meshTxInput" placeholder="Enter message to transmit (e.g. SOS)" style="flex: 1; min-width: 200px;">
                         <button class="btn btn-primary" onclick="MeshModule.transmitText()">Transmit (TX)</button>
                     </div>
                 </div>
@@ -82,9 +82,9 @@ const MeshModule = {
                         Transfer highly resilient offline data using your device's camera. Perfect for noisy environments.
                     </p>
                     
-                    <div class="search-box" style="max-width: 100%; margin-bottom: 20px; padding-right: 4px;">
-                        <span class="search-icon">📸</span>
-                        <input type="text" id="qrTxInput" placeholder="Enter message to generate QR payload">
+                    <div class="search-box" style="display: flex; flex-wrap: wrap; gap: 8px; max-width: 100%; margin-bottom: 20px; padding: 4px;">
+                        <span class="search-icon" style="position: static; margin-left: 10px;">📸</span>
+                        <input type="text" id="qrTxInput" placeholder="Enter message to generate QR payload" style="flex: 1; min-width: 180px; padding-left: 10px;">
                         <button class="btn btn-primary" onclick="MeshModule.generateQR()">Generate QR</button>
                         <button class="btn" onclick="MeshModule.startScanQR()" id="btnScanQR">Scan Camera</button>
                     </div>
