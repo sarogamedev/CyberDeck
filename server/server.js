@@ -365,6 +365,36 @@ pemsPromise.then(pems => {
                 mdns.query({ questions: [{ name: '_cyberdtn._tcp.local', type: 'PTR' }] });
             }, 10000);
 
+            // Fallback UDP Broadcast Beacon (Bypass Android Hotspot mDNS filtering)
+            try {
+                const dgram = require('dgram');
+                const udpClient = dgram.createSocket('udp4');
+                udpClient.bind(() => udpClient.setBroadcast(true));
+
+                const udpServer = dgram.createSocket('udp4');
+                udpServer.on('message', (msg, rinfo) => {
+                    try {
+                        const payload = JSON.parse(msg.toString());
+                        if (payload.cyberdtn && rinfo.address !== ip) {
+                            dtnPeers.set(rinfo.address, Date.now());
+                        }
+                    } catch (e) { }
+                });
+                udpServer.bind(8887, '0.0.0.0', () => {
+                    console.log(`\x1b[36m  \x1b[1mDTN UDP Beacon:\x1b[0m Active on port 8887\x1b[0m`);
+                });
+
+                // Blast presence across the actual subnet boundary
+                setInterval(() => {
+                    try {
+                        const msg = Buffer.from(JSON.stringify({ cyberdtn: true }));
+                        udpClient.send(msg, 0, msg.length, 8887, '255.255.255.255');
+                    } catch (e) { }
+                }, 10000);
+            } catch (e) {
+                console.error('Failed to start UDP beacon:', e.message);
+            }
+
             // DTN Epidemic Sync Loop
             setInterval(async () => {
                 const now = Date.now();
@@ -404,11 +434,16 @@ pemsPromise.then(pems => {
 
                 for (const peerIp of dtnPeers.keys()) {
                     try {
-                        const checkRes = await fetch(`http://${peerIp}:${PORT}/api/dtn/sync/check`, {
+                        // Ignore self-signed certs for internal P2P connections
+                        const https = require('https');
+                        const agent = new https.Agent({ rejectUnauthorized: false });
+
+                        const checkRes = await fetch(`https://${peerIp}:${HTTPS_PORT}/api/dtn/sync/check`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ known_ids: myKnownIds }),
-                            timeout: 5000
+                            timeout: 5000,
+                            agent: agent
                         });
                         const data = await checkRes.json();
 
@@ -425,11 +460,12 @@ pemsPromise.then(pems => {
                         if (data.my_known_ids) {
                             const peerNeeds = myPackets.filter(myP => !data.my_known_ids.includes(myP.id));
                             if (peerNeeds.length > 0) {
-                                await fetch(`http://${peerIp}:${PORT}/api/dtn/sync/receive`, {
+                                await fetch(`https://${peerIp}:${HTTPS_PORT}/api/dtn/sync/receive`, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({ packets: peerNeeds }),
-                                    timeout: 5000
+                                    timeout: 5000,
+                                    agent: agent
                                 });
                                 console.log(`[DTN] Auto-Sync: Sent ${peerNeeds.length} missing packets to ${peerIp}`);
                             }
