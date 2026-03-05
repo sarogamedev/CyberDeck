@@ -143,6 +143,15 @@ function downloadFile(url, dest, dlId, activeDownloads, activeProcesses, maxRedi
                         }
                     }
 
+                    // Write sidecar license file
+                    if (dl.licenseMetadata) {
+                        try {
+                            const sidecarPath = dest.replace(/\.[^.]+$/, '') + '.license.json';
+                            fs.writeFileSync(sidecarPath, JSON.stringify({ ...dl.licenseMetadata, sha256: fileHash }, null, 2));
+                            console.log(`[Store] License sidecar written: ${sidecarPath}`);
+                        } catch (e) { console.error('[Store] Failed to write license sidecar:', e.message); }
+                    }
+
                     activeDownloads.set(dlId, {
                         ...dl, status: 'complete', progress: 100,
                         output: `Downloaded: ${fileName}\nSaved to: ${dest}\n${hashStatus}`
@@ -244,7 +253,19 @@ module.exports = function (config) {
 
     // Download endpoint
     router.post('/download', async (req, res) => {
-        const { id, url, dirUrl, pattern, cmd, type, sha256 } = req.body;
+        const { id, url, dirUrl, pattern, cmd, type, sha256, license, licenseUrl, source, sourceUrl, distributor, name: itemName } = req.body;
+
+        // Build sidecar license metadata (travels with content during DTN/LAN sync)
+        const licenseMetadata = {
+            id, name: itemName || id,
+            license: license || 'Unknown',
+            licenseUrl: licenseUrl || '',
+            source: source || '',
+            sourceUrl: sourceUrl || '',
+            distributor: distributor || '',
+            downloadedAt: new Date().toISOString(),
+            notice: 'This content is provided by a third-party project. CyberDeck does not own or claim ownership of this resource. Please comply with the original license terms.'
+        };
 
         if (type === 'ollama') {
             const dlId = id;
@@ -268,6 +289,14 @@ module.exports = function (config) {
                 const dl = activeDownloads.get(dlId) || {};
                 if (dl.status !== 'cancelled') {
                     activeDownloads.set(dlId, { ...dl, status: code === 0 ? 'complete' : 'failed', progress: code === 0 ? 100 : dl.progress, output });
+                    // Write sidecar license file for Ollama models
+                    if (code === 0) {
+                        try {
+                            const sidecarPath = path.join(DOWNLOADS_DIR, `${dlId}.license.json`);
+                            fs.writeFileSync(sidecarPath, JSON.stringify(licenseMetadata, null, 2));
+                            console.log(`[Store] License sidecar written: ${sidecarPath}`);
+                        } catch (e) { console.error('[Store] Failed to write license sidecar:', e.message); }
+                    }
                 }
             });
 
@@ -293,7 +322,7 @@ module.exports = function (config) {
 
                 const fileName = downloadUrl.split('/').pop();
                 const dest = path.join(DOWNLOADS_DIR, fileName);
-                activeDownloads.set(dlId, { status: 'downloading', progress: 0, output: `Downloading: ${fileName}`, type: 'zim', dest, expectedSha256: sha256 || null });
+                activeDownloads.set(dlId, { status: 'downloading', progress: 0, output: `Downloading: ${fileName}`, type: 'zim', dest, expectedSha256: sha256 || null, licenseMetadata });
 
                 // Step 2: Download using Node.js built-in https (no curl/wget needed)
                 downloadFile(downloadUrl, dest, dlId, activeDownloads, activeProcesses);

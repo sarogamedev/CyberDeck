@@ -83,7 +83,13 @@ const StoreModule = {
                     pattern: item.pattern || '',
                     cmd: item.cmd || '',
                     type: item.type,
-                    sha256: item.sha256 || ''
+                    sha256: item.sha256 || '',
+                    name: item.name || '',
+                    license: item.license || '',
+                    licenseUrl: item.licenseUrl || '',
+                    source: item.source || '',
+                    sourceUrl: item.sourceUrl || '',
+                    distributor: item.distributor || ''
                 };
 
                 html += `
@@ -225,7 +231,7 @@ const StoreModule = {
     },
 
     async download(id, itemConfig) {
-        const { url, dirUrl, pattern, cmd, type, sha256 } = itemConfig;
+        const { url, dirUrl, pattern, cmd, type, sha256, name, license, licenseUrl, source, sourceUrl, distributor } = itemConfig;
         const btn = document.getElementById(`btn-${id}`);
         const prog = document.getElementById(`prog-${id}`);
 
@@ -242,7 +248,7 @@ const StoreModule = {
             const res = await authFetch(`${API}/api/store/download`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id, url, dirUrl, pattern, cmd, type, sha256 })
+                body: JSON.stringify({ id, url, dirUrl, pattern, cmd, type, sha256, name, license, licenseUrl, source, sourceUrl, distributor })
             });
             const data = await res.json();
 
