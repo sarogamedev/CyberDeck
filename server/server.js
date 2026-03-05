@@ -388,34 +388,61 @@ pemsPromise.then(pems => {
                     }
                 } catch (e) { }
 
+                // Helper to save a packet to spool
+                const savePacket = (packet) => {
+                    try {
+                        const filePath = path.join(dtnSpool, `${packet.id}.json`);
+                        if (!fs.existsSync(filePath)) {
+                            fs.writeFileSync(filePath, JSON.stringify(packet, null, 2));
+                            return true;
+                        }
+                    } catch (e) {
+                        console.error(`[DTN] Error saving packet ${packet.id}:`, e.message);
+                    }
+                    return false;
+                };
+
                 for (const peerIp of dtnPeers.keys()) {
                     try {
-                        const res = await fetch(`http://${peerIp}:${config.port}/api/dtn/sync/check`, {
+                        // Ignore self-signed certs for internal P2P connections
+                        const https = require('https');
+                        const agent = new https.Agent({ rejectUnauthorized: false });
+
+                        const checkRes = await fetch(`https://${peerIp}:${HTTPS_PORT}/api/dtn/sync/check`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ known_ids: myKnownIds })
+                            body: JSON.stringify({ known_ids: myKnownIds }),
+                            timeout: 5000,
+                            agent: agent
                         });
-                        const data = await res.json();
+                        const data = await checkRes.json();
 
+                        // Store anything they sent us
                         if (data.payloads_for_you && data.payloads_for_you.length > 0) {
+                            let r = 0;
                             for (const p of data.payloads_for_you) {
-                                try { fs.writeFileSync(path.join(dtnSpool, `${p.id}.json`), JSON.stringify(p, null, 2)); } catch (e) { }
+                                if (savePacket(p)) r++;
                             }
-                            console.log(`[DTN] ↓ Received ${data.payloads_for_you.length} packets from ${peerIp}`);
+                            if (r > 0) console.log(`[DTN] Auto-Sync: Received ${r} missing packets from ${peerIp}`);
                         }
 
+                        // Send them what they need
                         if (data.my_known_ids) {
                             const peerNeeds = myPackets.filter(myP => !data.my_known_ids.includes(myP.id));
                             if (peerNeeds.length > 0) {
-                                await fetch(`http://${peerIp}:${config.port}/api/dtn/sync/receive`, {
+                                await fetch(`https://${peerIp}:${HTTPS_PORT}/api/dtn/sync/receive`, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ packets: peerNeeds })
+                                    body: JSON.stringify({ packets: peerNeeds }),
+                                    timeout: 5000,
+                                    agent: agent
                                 });
-                                console.log(`[DTN] ↑ Sent ${peerNeeds.length} packets to ${peerIp}`);
+                                console.log(`[DTN] Auto-Sync: Sent ${peerNeeds.length} missing packets to ${peerIp}`);
                             }
                         }
-                    } catch (e) { }
+                    } catch (err) {
+                        console.error('[DTN] Auto-Sync fetch error:', err.message);
+                    }
                 }
             }, 15000);
 

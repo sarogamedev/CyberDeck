@@ -20,7 +20,7 @@ const DtnModule = {
                     <div class="module-title">DTN Engine</div>
                     <div class="module-subtitle">Store-and-Forward delay-tolerant routing</div>
                 </div>
-                <div style="display: flex; gap: 10px;">
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                     <button class="btn" style="background:var(--surface2);" onclick="DtnModule.refresh()">🔄 Refresh Spool</button>
                     <button class="btn btn-primary" onclick="DtnModule.showNewMessageUI()">+ Inject Packet</button>
                 </div>
@@ -34,10 +34,10 @@ const DtnModule = {
                         <input type="text" id="dtn-sender" placeholder="Your Alias (Sender)" class="search-box" style="padding: 10px; width: 100%; box-sizing: border-box;">
                         <input type="text" id="dtn-dest" placeholder="Destination (default: ALL)" value="ALL" class="search-box" style="padding: 10px; width: 100%; box-sizing: border-box;">
                         <textarea id="dtn-payload" placeholder="Enter message payload..." class="search-box" style="padding: 10px; width: 100%; min-height: 80px; box-sizing: border-box; resize: vertical;"></textarea>
-                        <div style="display: flex; gap: 10px; align-items: center;">
-                            <span style="color: var(--text-dim); font-size: 12px;">TTL (Hours):</span>
+                        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                            <span style="color: var(--text-dim); font-size: 12px; white-space: nowrap;">TTL (Hours):</span>
                             <input type="number" id="dtn-ttl" value="48" min="1" max="168" class="search-box" style="padding: 5px 10px; width: 80px;">
-                            <div style="flex: 1;"></div>
+                            <div style="flex: 1; min-width: 10px;"></div>
                             <button class="btn" style="background:var(--surface2);" onclick="document.getElementById('dtn-composer').style.display='none'">Cancel</button>
                             <button class="btn btn-primary" onclick="DtnModule.sendPacket()">Inject to Network</button>
                         </div>
