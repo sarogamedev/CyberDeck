@@ -60,12 +60,12 @@ fi
 
 # ── Update packages ──
 step "Updating Termux packages..."
-pkg update -y && pkg upgrade -y
+pkg update -y && pkg upgrade -y || warn "Failed to update packages, but continuing..."
 success "Packages updated"
 
 # ── Core dependencies ──
 step "Installing core dependencies..."
-pkg install -y nodejs-lts git ffmpeg python
+pkg install -y nodejs-lts git ffmpeg python || warn "Failed to install some dependencies. Ensure node is installed."
 success "Core dependencies installed"
 
 # ── Navigate to project ──
