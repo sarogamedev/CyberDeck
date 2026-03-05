@@ -404,16 +404,11 @@ pemsPromise.then(pems => {
 
                 for (const peerIp of dtnPeers.keys()) {
                     try {
-                        // Ignore self-signed certs for internal P2P connections
-                        const https = require('https');
-                        const agent = new https.Agent({ rejectUnauthorized: false });
-
-                        const checkRes = await fetch(`https://${peerIp}:${HTTPS_PORT}/api/dtn/sync/check`, {
+                        const checkRes = await fetch(`http://${peerIp}:${PORT}/api/dtn/sync/check`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ known_ids: myKnownIds }),
-                            timeout: 5000,
-                            agent: agent
+                            timeout: 5000
                         });
                         const data = await checkRes.json();
 
@@ -430,12 +425,11 @@ pemsPromise.then(pems => {
                         if (data.my_known_ids) {
                             const peerNeeds = myPackets.filter(myP => !data.my_known_ids.includes(myP.id));
                             if (peerNeeds.length > 0) {
-                                await fetch(`https://${peerIp}:${HTTPS_PORT}/api/dtn/sync/receive`, {
+                                await fetch(`http://${peerIp}:${PORT}/api/dtn/sync/receive`, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({ packets: peerNeeds }),
-                                    timeout: 5000,
-                                    agent: agent
+                                    timeout: 5000
                                 });
                                 console.log(`[DTN] Auto-Sync: Sent ${peerNeeds.length} missing packets to ${peerIp}`);
                             }
