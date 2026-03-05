@@ -323,6 +323,7 @@ pemsPromise.then(pems => {
     httpsServer.listen(HTTPS_PORT, '0.0.0.0', () => {
         const ip = getLanIP();
         const mDnsName = config.mDnsName || 'cyberdeck';
+        const dtnPeers = new Map();
 
         // Start mDNS Broadcaster
         try {
