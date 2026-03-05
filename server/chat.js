@@ -82,16 +82,6 @@ module.exports = function setupChat(server) {
                             dtnPayload: msg.dtnPayload
                         });
                         break;
-                        broadcast({
-                            type: msg.type,
-                            from: username,
-                            target: msg.target, // The intended recipient
-                            fileName: msg.fileName,
-                            fileSize: msg.fileSize,
-                            sdp: msg.sdp,
-                            candidate: msg.candidate
-                        });
-                        break;
                 }
             } catch (err) {
                 console.error('Chat error:', err.message);

@@ -102,6 +102,16 @@ const DtnModule = {
             if (data.success) {
                 document.getElementById('dtn-composer').style.display = 'none';
                 document.getElementById('dtn-payload').value = '';
+
+                // Instantly blast the target packet out over the Chat Relay if connected
+                if (window.ChatModule && window.ChatModule.ws && window.ChatModule.ws.readyState === 1 /* OPEN */) {
+                    window.ChatModule.ws.send(JSON.stringify({
+                        type: 'dtn-sync',
+                        from: Auth.user?.username || 'Anonymous',
+                        dtnPayload: [data.packet]
+                    }));
+                }
+
                 this.refresh();
             } else {
                 alert('Failed to inject packet');
