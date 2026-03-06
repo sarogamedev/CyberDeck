@@ -6,12 +6,12 @@ When the grid goes down, CyberDeck keeps you connected.
 
 ## 📡 Communication & Networking
 
-CyberDeck is built around a multi-layered communication stack that works in any connectivity scenario — from full Wi-Fi to complete radio silence.
+CyberDeck is built around a multi-layered communication stack that works in any connectivity scenario from full Wi-Fi to complete radio silence.
 
 | Layer | Module | How It Works |
 |-------|--------|-------------|
 | **Real-time** | 💬 **LAN Chat** | WebSocket-based group chat across all devices on the same network. Zero config, instant join. |
-| **Store-and-Forward** | 📡 **DTN Engine** | Delay-Tolerant Networking with automatic **Epidemic Sync** via UDP beacons + mDNS. Devices exchange packets in the background whenever they come within Wi-Fi range — carry data across air-gaps like a physical courier. |
+| **Store-and-Forward** | 📡 **DTN Engine** | Delay-Tolerant Networking with automatic **Epidemic Sync** via UDP beacons + mDNS. Devices exchange packets in the background whenever they come within Wi-Fi range, carry data across air-gaps like a physical courier. |
 | **Direct Transfer** | 📁 **WebRTC P2P** | Browser-to-browser file transfers over LAN. No server storage touched. |
 | **Air-Gapped** | 🕸️ **Mesh Network** | Transmit data with no network at all: **Acoustic MFSK** (audio frequencies), **Optical QR** (camera), or **BLE** (Bluetooth Low Energy). |
 | **Content Sharing** | 📦 **LAN Content Sync** | Browse and pull downloaded datasets, models, and knowledge packs directly from nearby CyberDeck nodes over the LAN. License metadata travels with the content. |
@@ -69,13 +69,13 @@ CyberDeck includes a built-in store for downloading open-source knowledge packs,
 |--------|-------------|
 | 🧰 **Tools** | Compass, Calculator, Unit Converter, Morse Code generator, Flashlight, Coordinates. |
 | 🔋 **Power** | System monitor: CPU load, RAM, storage, battery, temperature, service status. |
-| 📱 **PWA** | Progressive Web App — install to home screen, cache UI shell for instant offline loading. |
+| 📱 **PWA** | Progressive Web App, install to home screen, cache UI shell for instant offline loading. |
 
 ## 🚀 Quick Start
 
 CyberDeck works on any device running Node.js. Choose your platform:
 
-### Android (via Termux) — *Ideal portable mesh node*
+### Android (via Termux) *Ideal portable mesh node*
 ```bash
 # Install Termux + Termux:API from F-Droid (not Play Store)
 pkg update && pkg upgrade

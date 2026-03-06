@@ -15,10 +15,10 @@ const StoreModule = {
                     <div class="module-title">Content Store</div>
                     <div class="module-subtitle">Download knowledge packs, LLM models & more</div>
                 </div>
-                <div class="store-tabs" style="display:flex; gap:10px; margin-top: 15px;">
-                    <button id="tab-catalog" class="btn btn-primary" onclick="StoreModule.switchTab('catalog')">📚 Store Catalog</button>
-                    <button id="tab-downloaded" class="btn" style="background:var(--surface2);" onclick="StoreModule.switchTab('downloaded')">💾 Downloaded</button>
-                    <button id="tab-nearby" class="btn" style="background:var(--surface2);" onclick="StoreModule.switchTab('nearby')">📡 Nearby CyberDecks</button>
+                <div class="store-tabs" style="display:flex; gap:8px; margin-top: 15px; overflow-x:auto; flex-wrap:nowrap; -webkit-overflow-scrolling:touch; padding-bottom:4px;">
+                    <button id="tab-catalog" class="btn btn-primary" style="white-space:nowrap;font-size:13px;" onclick="StoreModule.switchTab('catalog')">📚 Catalog</button>
+                    <button id="tab-downloaded" class="btn" style="background:var(--surface2);white-space:nowrap;font-size:13px;" onclick="StoreModule.switchTab('downloaded')">💾 Downloaded</button>
+                    <button id="tab-nearby" class="btn" style="background:var(--surface2);white-space:nowrap;font-size:13px;" onclick="StoreModule.switchTab('nearby')">📡 Nearby</button>
                 </div>
             </div>
             <div id="storeContent"><div class="loading-spinner"></div></div>`;

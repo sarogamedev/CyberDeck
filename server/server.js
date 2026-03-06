@@ -236,7 +236,19 @@ app.use('/api/files', requireAuth, require('./routes/files')(config));
 app.use('/api/survival', requireAuth, require('./routes/survival')(config));
 app.use('/api/vault', requireAuth, require('./routes/vault')(config));
 app.use('/api/power', requireAuth, require('./routes/power')(config));
-app.use('/api/store', requireAuth, require('./routes/store')(config));
+// Public Store endpoints (no auth) — needed for LAN Content Sync between CyberDeck nodes
+const storeRouter = require('./routes/store')(config);
+app.get('/api/store/library', (req, res, next) => {
+    req.url = '/library';
+    storeRouter(req, res, next);
+});
+app.get('/api/store/serve/:filename', (req, res, next) => {
+    req.url = '/serve/' + req.params.filename;
+    storeRouter(req, res, next);
+});
+
+// Protected Store (requires login)
+app.use('/api/store', requireAuth, storeRouter);
 app.use('/api/dtn', dtnRoutes);
 
 // Config API (admin only)
