@@ -7,6 +7,7 @@ const NearbyModule = {
     selectedPeer: null,
     peerLibrary: null,
     pollTimer: null,
+    selfIp: '...',
 
     async init() {
         const el = document.getElementById('mod-nearby');
@@ -46,18 +47,19 @@ const NearbyModule = {
             const res = await authFetch(`${API}/api/peers`);
             const data = await res.json();
             this.peers = data.peers || [];
-            this.renderPeers(data.self);
+            if (data.self) this.selfIp = data.self;
+            this.renderPeers();
         } catch (err) {
             el.innerHTML = `<div class="empty-state"><h3>Discovery Error</h3><p>${err.message}</p></div>`;
         }
     },
 
-    renderPeers(selfIp) {
+    renderPeers() {
         const el = document.getElementById('nearby-peers');
 
         let html = `
             <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;">
-                <span style="font-size: 12px; color: var(--text-dim);">Your IP: <strong style="color: var(--cyan);">${selfIp}</strong></span>
+                <span style="font-size: 12px; color: var(--text-dim);">Your IP: <strong style="color: var(--cyan);">${this.selfIp}</strong></span>
                 <button class="btn btn-sm" style="font-size:12px;" onclick="NearbyModule.discoverPeers()">🔄 Refresh</button>
             </div>`;
 
@@ -112,7 +114,8 @@ const NearbyModule = {
             if (!this.peers.find(p => p.ip === ip)) {
                 this.peers.push({ ip, lastSeen: Date.now(), agoMs: 0 });
             }
-            this.renderPeers(data.self);
+            if (data.self) this.selfIp = data.self;
+            this.renderPeers();
         } catch (e) { }
 
         // Fetch library
