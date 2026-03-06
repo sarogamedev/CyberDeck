@@ -13,9 +13,17 @@ const NearbyModule = {
         el.innerHTML = `
             <div class="module-header">
                 <div>
+            <div class="module-header">
+                <div>
                     <div class="module-title">Nearby CyberDecks</div>
                     <div class="module-subtitle">Discover and sync content with nearby nodes</div>
                 </div>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 20px; background: var(--surface2); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+                <span class="search-icon">📡</span>
+                <input type="text" id="manual-peer-ip" class="input" placeholder="Enter peer IP (e.g. 192.168.1.50)..." style="flex: 1; border: none; background: transparent;"
+                    onkeydown="if(event.key==='Enter') NearbyModule.connectManual()">
+                <button class="btn btn-primary btn-sm" onclick="NearbyModule.connectManual()">Connect</button>
             </div>
             <div id="nearby-peers" style="margin-bottom: 20px;"><div class="loading-spinner"></div></div>
             <div id="nearby-library"></div>`;
@@ -57,18 +65,9 @@ const NearbyModule = {
 
         if (this.peers.length === 0) {
             html += `
-                <div style="background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 20px; text-align: center;">
-                    <p style="font-size: 16px; margin-bottom: 8px;">📡 Scanning for nearby CyberDecks...</p>
-                    <p style="font-size: 12px; color: var(--text-dim);">No nodes found yet. Make sure another CyberDeck is running on the same network.</p>
-                    <p style="font-size: 12px; color: var(--text-dim); margin-top: 8px;">Discovery happens automatically via mDNS and UDP beacons. Peers appear within ~10 seconds.</p>
-                    <div style="margin-top: 16px; border-top: 1px solid var(--border); padding-top: 16px;">
-                        <p style="font-size: 12px; color: var(--text-dim); margin-bottom: 8px;">Or enter an IP manually:</p>
-                        <div style="display: flex; gap: 8px; justify-content: center;">
-                            <input type="text" id="manual-peer-ip" class="input" placeholder="192.168.1.x" style="max-width: 180px;"
-                                onkeydown="if(event.key==='Enter') NearbyModule.connectManual()">
-                            <button class="btn btn-primary btn-sm" onclick="NearbyModule.connectManual()">Connect</button>
-                        </div>
-                    </div>
+                <div style="background: var(--surface); border: 1px dashed var(--border); border-radius: var(--radius-sm); padding: 20px; text-align: center;">
+                    <p style="font-size: 14px; margin-bottom: 8px; color: var(--text-dim);">📡 Scanning for auto-discoverable CyberDecks...</p>
+                    <p style="font-size: 11px; color: var(--text-dim);">Peers appear automatically via mDNS and UDP beacons within ~10 seconds.</p>
                 </div>`;
         } else {
             html += '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px;">';
@@ -92,15 +91,6 @@ const NearbyModule = {
                     </div>`;
             }
             html += '</div>';
-
-            // Manual IP fallback
-            html += `
-                <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center;">
-                    <span style="font-size: 12px; color: var(--text-dim);">Manual:</span>
-                    <input type="text" id="manual-peer-ip" class="input" placeholder="192.168.1.x" style="max-width: 180px; font-size: 12px;"
-                        onkeydown="if(event.key==='Enter') NearbyModule.connectManual()">
-                    <button class="btn btn-sm" style="font-size:12px;" onclick="NearbyModule.connectManual()">Connect</button>
-                </div>`;
         }
 
         el.innerHTML = html;

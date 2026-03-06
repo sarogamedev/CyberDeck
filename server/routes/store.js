@@ -840,7 +840,7 @@ module.exports = function (config) {
             const url = `https://${peerIp}:${port}/api/store/library`;
             console.log(`[LAN Sync] Fetching library from peer: ${url}`);
 
-            const response = await fetch(url, { timeout: 5000, agent });
+            const response = await fetch(url, { timeout: 15000, agent });
             const data = await response.json();
             res.json({ success: true, peer: peerIp, ...data });
         } catch (e) {
