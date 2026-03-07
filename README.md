@@ -1,6 +1,6 @@
 # CyberDeck ⚡
 
-A **self-hosted, offline-first communication and survival platform** that transforms any Android phone or Node.js device into a decentralized mesh node. CyberDeck enables real-time messaging, delay-tolerant packet routing, air-gapped data transfer, and peer-to-peer content sharing — all without requiring an internet connection.
+A **self-hosted, offline-first communication and survival platform** that transforms any Android phone or Node.js device into a decentralized mesh node. CyberDeck enables real-time messaging, delay-tolerant packet routing, air-gapped data transfer, and peer-to-peer content sharing, all without requiring an internet connection.
 
 When the grid goes down, CyberDeck keeps you connected.
 
@@ -36,9 +36,10 @@ Nodes discover each other automatically via **mDNS** and **UDP Subnet Beacons** 
 
 | Module | Description |
 |--------|-------------|
-| 🤖 **AI Chat** | Chat with local LLMs (Llama 3, Phi-3, Mistral) via Ollama. 100% offline, streaming responses. |
+| 🤖 **AI Chat** | Chat with local LLMs (Llama 3, Phi-3, Mistral) via Ollama. 100% offline, streaming responses, and **Model List Refresh**. |
 | 📚 **Wikipedia** | Offline encyclopedia via Kiwix. Search and read articles without internet. |
 | 🗺️ **Maps** | Offline/online maps via Leaflet with geolocation tracking and **Offline Tile Downloader**. |
+| 📡 **Nearby** | Auto-discover other CyberDecks on your LAN and **pull content/models offline** from them via specialized P2P protocols. |
 | 📖 **Ebooks** | EPUB reader and PDF viewer with saved reading progress. |
 | 🛡️ **Survival** | Built-in offline survival guides (Water, Fire, Shelter, First Aid, Navigation). |
 
@@ -48,10 +49,12 @@ CyberDeck includes a built-in store for downloading open-source knowledge packs,
 
 - **Catalog Manifest Architecture** — items defined in `catalog.json`, zero code changes to add content
 - **Resumable Downloads** — HTTP Range pause/resume for multi-GB files
+- **LAN Content Sync (P2P)** — Share ZIM files and **Ollama AI Models** between devices without internet. Integrated aggregate progress and speed tracking.
+- **Cross-Platform Sync** — Seamlessly pull content between Android (Termux), Windows, and Linux.
 - **SHA256 Integrity Verification** — post-download hash check, auto-delete corrupted files
 - **License Sidecar Files** — `.license.json` accompanies every download with full attribution
-- **LAN Content Sync** — share downloaded content between CyberDecks without internet
 - **Attribution Compliance** — all content clearly labeled with license, source, and distributor
+
 
 ## 🎵 Media & Storage
 
