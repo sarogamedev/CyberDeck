@@ -30,166 +30,131 @@ function httpsGet(url, maxRedirects = 5) {
 }
 
 // Download a file with progress tracking and pause/resume support
-function downloadFile(url, dest, dlId, activeDownloads, activeProcesses, maxRedirects = 5) {
-    const fileName = path.basename(dest);
-    const proto = url.startsWith('https') ? https : http;
+function downloadFile(url, dest, dlId, activeDownloads, activeProcesses, maxRedirects = 5, skipFinalStatus = false, parentDlId = null) {
+    return new Promise((resolve, reject) => {
+        const fileName = path.basename(dest);
+        const proto = url.startsWith('https') ? https : http;
 
-    // Check existing file size for resuming
-    let startByte = 0;
-    if (fs.existsSync(dest)) {
-        startByte = fs.statSync(dest).size;
-    }
-
-    const options = {
-        headers: {}
-    };
-    if (startByte > 0) {
-        options.headers['Range'] = `bytes=${startByte}-`;
-    }
-
-    const req = proto.get(url, options, (res) => {
-        // Handle redirects
-        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-            res.resume();
-            if (maxRedirects <= 0) {
-                activeDownloads.set(dlId, { ...activeDownloads.get(dlId), status: 'failed', progress: 0, output: 'Too many redirects' });
-                return;
-            }
-            const next = res.headers.location.startsWith('http') ? res.headers.location : new URL(res.headers.location, url).href;
-            return downloadFile(next, dest, dlId, activeDownloads, activeProcesses, maxRedirects - 1);
+        // Check existing file size for resuming
+        let startByte = 0;
+        if (fs.existsSync(dest)) {
+            startByte = fs.statSync(dest).size;
         }
 
-        // 416 means Range Not Satisfiable (file is already fully downloaded based on our startByte)
-        if (res.statusCode === 416) {
-            res.resume();
-            activeProcesses.delete(dlId);
-            activeDownloads.set(dlId, {
-                ...activeDownloads.get(dlId),
-                status: 'complete', progress: 100,
-                output: `Downloaded: ${fileName}\nSaved to: ${dest}`
-            });
-            return;
+        const options = {
+            headers: {},
+            rejectUnauthorized: false
+        };
+        if (startByte > 0) {
+            options.headers['Range'] = `bytes=${startByte}-`;
         }
 
-        if (res.statusCode !== 200 && res.statusCode !== 206) {
-            res.resume();
-            activeDownloads.set(dlId, { ...activeDownloads.get(dlId), status: 'failed', progress: 0, output: `HTTP error ${res.statusCode} for ${url}` });
-            return;
-        }
-
-        // If it's 200 (server doesn't support Range), we must start over
-        if (res.statusCode === 200 && startByte > 0) {
-            startByte = 0;
-        }
-
-        const contentLength = parseInt(res.headers['content-length'], 10) || 0;
-        const totalSize = startByte + contentLength;
-        let downloaded = startByte;
-
-        // Use 'a' flag to append if we are resuming
-        const flags = res.statusCode === 206 ? 'a' : 'w';
-        const fileStream = fs.createWriteStream(dest, { flags });
-
-        res.on('data', (chunk) => {
-            downloaded += chunk.length;
-            const pct = totalSize > 0 ? Math.round((downloaded / totalSize) * 100) : 0;
-            const dlMB = (downloaded / (1024 * 1024)).toFixed(1);
-            const totalMB = totalSize > 0 ? (totalSize / (1024 * 1024)).toFixed(1) : '?';
-            const dl = activeDownloads.get(dlId) || {};
-
-            // Allow caller to transition to 'paused' without being overwritten
-            if (dl.status === 'paused' || dl.status === 'cancelled') {
-                req.destroy();
-                return;
+        const req = proto.get(url, options, (res) => {
+            if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                res.resume();
+                if (maxRedirects <= 0) return reject(new Error('Too many redirects'));
+                const next = res.headers.location.startsWith('http') ? res.headers.location : new URL(res.headers.location, url).href;
+                return downloadFile(next, dest, dlId, activeDownloads, activeProcesses, maxRedirects - 1, skipFinalStatus, parentDlId).then(resolve).catch(reject);
             }
 
-            activeDownloads.set(dlId, {
-                ...dl,
-                status: 'downloading',
-                progress: pct,
-                progressBytes: downloaded,
-                totalBytes: totalSize,
-                output: `${fileName}\n${dlMB} MB / ${totalMB} MB (${pct}%)`
+            if (res.statusCode === 416) {
+                res.resume();
+                activeProcesses.delete(dlId);
+                if (!skipFinalStatus) {
+                    activeDownloads.set(dlId, { ...activeDownloads.get(dlId), status: 'complete', progress: 100, output: `Downloaded: ${fileName}` });
+                }
+                return resolve();
+            }
+
+            if (res.statusCode !== 200 && res.statusCode !== 206) {
+                res.resume();
+                return reject(new Error(`HTTP ${res.statusCode} for ${url}`));
+            }
+
+            const contentLength = parseInt(res.headers['content-length'], 10) || 0;
+            const totalSize = startByte + contentLength;
+            let downloaded = startByte;
+            const fileStream = fs.createWriteStream(dest, { flags: res.statusCode === 206 ? 'a' : 'w' });
+
+            res.on('data', (chunk) => {
+                downloaded += chunk.length;
+                const pct = totalSize > 0 ? Math.round((downloaded / totalSize) * 100) : 0;
+                const dl = activeDownloads.get(dlId) || {};
+                if (dl.status === 'paused' || dl.status === 'cancelled') {
+                    req.destroy();
+                    return;
+                }
+                activeDownloads.set(dlId, {
+                    ...dl, status: 'downloading', progress: pct, progressBytes: downloaded, totalBytes: totalSize,
+                    output: `${fileName}\n${(downloaded / 1048576).toFixed(1)} MB / ${(totalSize / 1048576).toFixed(1)} MB (${pct}%)`
+                });
+
+                // Update parent if provided (for aggregate speed/progress)
+                if (parentDlId) {
+                    const pdl = activeDownloads.get(parentDlId);
+                    if (pdl) {
+                        const subDownloads = pdl.subDownloads || {};
+                        subDownloads[dlId] = { downloaded, total: totalSize };
+
+                        let totalDownloaded = 0;
+                        let totalToDownload = pdl.totalBytes || 0;
+                        Object.values(subDownloads).forEach(sub => {
+                            totalDownloaded += sub.downloaded;
+                        });
+
+                        activeDownloads.set(parentDlId, {
+                            ...pdl,
+                            subDownloads,
+                            progressBytes: totalDownloaded,
+                            progress: totalToDownload > 0 ? Math.round((totalDownloaded / totalToDownload) * 100) : pdl.progress
+                        });
+                    }
+                }
             });
-        });
 
-        res.pipe(fileStream);
+            res.pipe(fileStream);
 
-        fileStream.on('finish', () => {
-            fileStream.close();
-            activeProcesses.delete(dlId);
-            const dl = activeDownloads.get(dlId) || {};
-            if (dl.status !== 'cancelled' && dl.status !== 'paused') {
-                // SHA256 Integrity Verification
-                const hash = crypto.createHash('sha256');
-                const verifyStream = fs.createReadStream(dest);
-                verifyStream.on('data', (chunk) => hash.update(chunk));
-                verifyStream.on('end', () => {
-                    const fileHash = hash.digest('hex');
-                    const expectedHash = dl.expectedSha256;
-                    let hashStatus = `SHA256: ${fileHash.substring(0, 16)}...`;
-
-                    if (expectedHash) {
-                        if (fileHash === expectedHash) {
-                            hashStatus = `✓ Verified (SHA256: ${fileHash.substring(0, 16)}...)`;
-                            console.log(`[Store] ✓ Hash verified for ${fileName}`);
-                        } else {
-                            console.error(`[Store] ✗ Hash mismatch for ${fileName}! Expected: ${expectedHash}, Got: ${fileHash}`);
+            fileStream.on('finish', () => {
+                fileStream.close();
+                activeProcesses.delete(dlId);
+                const dl = activeDownloads.get(dlId) || {};
+                if (dl.status !== 'cancelled' && dl.status !== 'paused') {
+                    const hash = crypto.createHash('sha256');
+                    const verifyStream = fs.createReadStream(dest);
+                    verifyStream.on('data', (chunk) => hash.update(chunk));
+                    verifyStream.on('error', reject);
+                    verifyStream.on('end', () => {
+                        const fileHash = hash.digest('hex');
+                        const expectedHash = dl.expectedSha256;
+                        if (expectedHash && fileHash !== expectedHash) {
                             try { fs.unlinkSync(dest); } catch (e) { }
-                            activeDownloads.set(dlId, {
-                                ...dl, status: 'corrupted', progress: 0,
-                                output: `✗ INTEGRITY FAILURE: ${fileName}\nExpected: ${expectedHash}\nGot: ${fileHash}\nFile deleted. Please retry.`
-                            });
-                            return;
+                            activeDownloads.set(dlId, { ...dl, status: 'corrupted', output: 'Integrity failure' });
+                            return reject(new Error('Hash mismatch'));
                         }
-                    }
 
-                    // Write sidecar license file
-                    if (dl.licenseMetadata) {
-                        try {
-                            const sidecarPath = dest.replace(/\.[^.]+$/, '') + '.license.json';
-                            fs.writeFileSync(sidecarPath, JSON.stringify({ ...dl.licenseMetadata, sha256: fileHash }, null, 2));
-                            console.log(`[Store] License sidecar written: ${sidecarPath}`);
-                        } catch (e) { console.error('[Store] Failed to write license sidecar:', e.message); }
-                    }
+                        // License sidecar
+                        if (dl.licenseMetadata) {
+                            try {
+                                const sidecarPath = dest.replace(/\.[^.]+$/, '') + '.license.json';
+                                fs.writeFileSync(sidecarPath, JSON.stringify({ ...dl.licenseMetadata, sha256: fileHash }, null, 2));
+                            } catch (e) { }
+                        }
 
-                    activeDownloads.set(dlId, {
-                        ...dl, status: 'complete', progress: 100,
-                        output: `Downloaded: ${fileName}\nSaved to: ${dest}\n${hashStatus}`
+                        if (!skipFinalStatus) {
+                            activeDownloads.set(dlId, { ...dl, status: 'complete', progress: 100, output: `Downloaded: ${fileName}` });
+                        }
+                        resolve();
                     });
-                });
-                verifyStream.on('error', () => {
-                    activeDownloads.set(dlId, {
-                        ...dl, status: 'complete', progress: 100,
-                        output: `Downloaded: ${fileName}\nSaved to: ${dest}\n(Hash check skipped)`
-                    });
-                });
-            }
-        });
+                } else {
+                    resolve();
+                }
+            });
 
-        fileStream.on('error', (err) => {
-            activeProcesses.delete(dlId);
-            activeDownloads.set(dlId, { ...activeDownloads.get(dlId), status: 'failed', progress: 0, output: `Write error: ${err.message}` });
-        });
+            fileStream.on('error', (err) => { try { fs.unlinkSync(dest); } catch (e) { } reject(err); });
+        }).on('error', reject);
 
-        res.on('error', (err) => {
-            activeProcesses.delete(dlId);
-            if (err.message !== 'aborted') {
-                activeDownloads.set(dlId, { ...activeDownloads.get(dlId), status: 'failed', progress: 0, output: `Download error: ${err.message}` });
-            }
-        });
+        activeProcesses.set(dlId, { type: 'request', req, dest, url, maxRedirects });
     });
-
-    req.on('error', (err) => {
-        activeProcesses.delete(dlId);
-        const dl = activeDownloads.get(dlId) || {};
-        if (dl.status !== 'cancelled' && dl.status !== 'paused') {
-            activeDownloads.set(dlId, { ...dl, status: 'failed', progress: 0, output: `Connection error: ${err.message}` });
-        }
-    });
-
-    // Store request reference for cancellation/pausing
-    activeProcesses.set(dlId, { type: 'request', req, dest, url, maxRedirects });
 }
 
 module.exports = function (config) {
@@ -201,6 +166,9 @@ module.exports = function (config) {
     const activeDownloads = new Map();
     // Track processes/requests for cancellation
     const activeProcesses = new Map();
+
+    const fetch = require('node-fetch').default || require('node-fetch');
+    const agent = new https.Agent({ rejectUnauthorized: false });
 
     // Catalog Manifest — loads from store/catalog.json (no code changes needed to add items)
     const CATALOG_PATH = path.join(__dirname, '..', 'store', 'catalog.json');
@@ -344,69 +312,48 @@ module.exports = function (config) {
     });
 
     // Pause an active download
-    router.post('/pause/:id', (req, res) => {
+    // Progress polling endpoint
+    router.get('/progress/:id', (req, res) => {
+        const dlId = req.params.id;
+        const info = activeDownloads.get(dlId) || { status: 'idle', progress: 0 };
+        res.json(info);
+    });
+
+    // Pause an active download
+    router.post('/progress/:id/pause', (req, res) => {
         const dlId = req.params.id;
         const proc = activeProcesses.get(dlId);
         const dl = activeDownloads.get(dlId);
 
-        if (!dl || dl.type !== 'zim') {
-            return res.status(400).json({ error: 'Only file downloads can be paused' });
-        }
-
         if (proc && proc.type === 'request' && proc.req) {
-            // Set state to paused, req connection will be destroyed by data event listener
-            activeDownloads.set(dlId, { ...dl, status: 'paused', output: `Paused: ${path.basename(proc.dest)}\nPartially downloaded (${dl.progress}%)` });
             proc.req.destroy();
-
-            // Keep the process metadata so we can resume it easily later without client resending full details
             activeProcesses.set(dlId, { ...proc, req: null });
         }
-        res.json({ success: true, message: 'Download paused' });
+        if (dl) activeDownloads.set(dlId, { ...dl, status: 'paused' });
+        res.json({ success: true, status: 'paused' });
     });
 
     // Resume a paused download
-    router.post('/resume/:id', (req, res) => {
+    router.post('/progress/:id/resume', (req, res) => {
         const dlId = req.params.id;
-        const proc = activeProcesses.get(dlId);
-        const dl = activeDownloads.get(dlId);
-
-        if (!dl || dl.type !== 'zim' || dl.status !== 'paused') {
-            return res.status(400).json({ error: 'Download is not paused or cannot be resumed' });
-        }
-
-        if (proc && proc.url && proc.dest) {
-            activeDownloads.set(dlId, { ...dl, status: 'downloading', output: `Resuming: ${path.basename(proc.dest)}` });
-            downloadFile(proc.url, proc.dest, dlId, activeDownloads, activeProcesses, proc.maxRedirects || 5);
-            res.json({ success: true, message: 'Download resumed' });
-        } else {
-            res.status(400).json({ error: 'Resume context lost' });
-        }
+        // Resuming is handled by the frontend re-triggering the pull (for P2P) 
+        // or the local store logic (for Internet ZIMs)
+        res.json({ success: true, status: 'resuming' });
     });
 
     // Cancel an active download
-    router.post('/cancel/:id', (req, res) => {
+    router.post('/progress/:id/cancel', (req, res) => {
         const dlId = req.params.id;
         const proc = activeProcesses.get(dlId);
         const dl = activeDownloads.get(dlId);
 
         if (proc) {
-            if (proc.type === 'process' && proc.proc) {
-                proc.proc.kill('SIGTERM');
-            } else if (proc.type === 'request' && proc.req) {
-                proc.req.destroy();
-            }
+            if (proc.type === 'process' && proc.proc) proc.proc.kill();
+            else if (proc.type === 'request' && proc.req) proc.req.destroy();
             activeProcesses.delete(dlId);
         }
-
-        // Delete partial file
-        if (dl && dl.dest) {
-            try { fs.unlinkSync(dl.dest); } catch (e) { }
-        } else if (proc && proc.dest) {
-            try { fs.unlinkSync(proc.dest); } catch (e) { }
-        }
-
-        activeDownloads.set(dlId, { status: 'cancelled', progress: 0, output: 'Download cancelled', type: dl?.type });
-        res.json({ success: true });
+        if (dl) activeDownloads.set(dlId, { ...dl, status: 'cancelled' });
+        res.json({ success: true, status: 'cancelled' });
     });
 
     // Delete a downloaded item
@@ -832,10 +779,6 @@ module.exports = function (config) {
         if (!peerIp) return res.status(400).json({ error: 'Missing peerIp' });
 
         try {
-            const fetch = require('node-fetch').default || require('node-fetch');
-            const httpsModule = require('https');
-            const agent = new httpsModule.Agent({ rejectUnauthorized: false });
-
             const port = config.httpsPort || 8443;
             const url = `https://${peerIp}:${port}/api/store/library`;
             console.log(`[LAN Sync] Fetching library from peer: ${url}`);
@@ -848,9 +791,55 @@ module.exports = function (config) {
         }
     });
 
+    // Serve Ollama blobs for P2P sync
+    router.get('/peer/ollama/blobs/:digest', async (req, res) => {
+        const { digest } = req.params;
+        const ollamaServeBase = process.env.OLLAMA_MODELS || (process.platform === 'win32'
+            ? path.join(process.env.USERPROFILE, '.ollama', 'models')
+            : path.join(os.homedir(), '.ollama', 'models'));
+
+        const safeDigest = digest.replace(':', '-');
+        const blobPath = path.join(ollamaServeBase, 'blobs', safeDigest);
+
+        if (fs.existsSync(blobPath)) {
+            res.sendFile(blobPath);
+        } else {
+            res.status(404).send('Blob not found');
+        }
+    });
+
+    // Serve Ollama manifests for P2P sync
+    router.get('/peer/ollama/manifest/:model', async (req, res) => {
+        const { model } = req.params;
+        const [repo, tag] = model.includes(':') ? model.split(':') : [model, 'latest'];
+        const ollamaBase = process.env.OLLAMA_MODELS || (process.platform === 'win32'
+            ? path.join(process.env.USERPROFILE, '.ollama', 'models')
+            : path.join(os.homedir(), '.ollama', 'models'));
+
+        // Check both library/repo and just repo (Ollama sometimes nests differently)
+        const pathsToTry = [
+            path.join(ollamaBase, 'manifests', 'registry.ollama.ai', 'library', repo, tag),
+            path.join(ollamaBase, 'manifests', 'registry.ollama.ai', repo, tag)
+        ];
+
+        let manifestPath = pathsToTry[0];
+        for (const p of pathsToTry) {
+            if (fs.existsSync(p)) {
+                manifestPath = p;
+                break;
+            }
+        }
+
+        if (fs.existsSync(manifestPath)) {
+            res.sendFile(manifestPath);
+        } else {
+            res.status(404).send('Manifest not found');
+        }
+    });
+
     // Proxy: Pull a file from a peer CyberDeck into our downloads
     router.post('/peer/pull', async (req, res) => {
-        const { peerIp, filename, licenseData } = req.body;
+        const { peerIp, filename, licenseData, type } = req.body;
         if (!peerIp || !filename) return res.status(400).json({ error: 'Missing peerIp or filename' });
 
         // Sanitize
@@ -865,43 +854,111 @@ module.exports = function (config) {
         if (activeDownloads.has(dlId) && ['downloading', 'discovering'].includes(activeDownloads.get(dlId)?.status)) {
             return res.json({ success: true, downloadId: dlId, message: 'Already downloading' });
         }
-
-        activeDownloads.set(dlId, { status: 'downloading', progress: 0, output: `Pulling from nearby CyberDeck (${peerIp})...`, type: 'zim', dest });
+        activeDownloads.set(dlId, { status: 'downloading', progress: 0, output: `Pulling from nearby CyberDeck (${peerIp})...`, type: type || 'zim', dest });
 
         try {
             const port = config.httpsPort || 8443;
             const url = `https://${peerIp}:${port}/api/store/serve/${encodeURIComponent(filename)}`;
             console.log(`[LAN Sync] Pulling ${filename} from peer: ${url}`);
 
-            if (filename.includes(':')) {
-                // It's likely an Ollama model notation (e.g. llama3:8b)
-                // Since CyberDeck isn't a full OCI registry, we just trigger a normal `ollama pull`
-                // on the local machine to fetch it from the official servers, acting as a "recommendation".
-                // In the future for air-gapped support we could manually transfer the blobs.
-                activeDownloads.set(dlId, { status: 'downloading', progress: 0, output: `Fetching AI Model via Ollama...`, type: 'ollama', dest: '' });
-                const { spawn } = require('child_process');
-                const proc = spawn('ollama', ['pull', filename]);
-                activeProcesses.set(dlId, proc);
+            if (type === 'ollama' || filename.includes(':')) {
+                // TRUE OFFLINE P2P OLLAMA SYNC - Run in background to avoid blocking response
+                (async () => {
+                    try {
+                        // [NEW] Check if local Ollama is running before pulling
+                        const ollamaPort = config.services?.ollama?.port || 11434;
+                        const healthRes = await fetch(`http://localhost:${ollamaPort}/api/tags`).catch(() => null);
+                        if (!healthRes || !healthRes.ok) {
+                            throw new Error('Local Ollama is not running. Please start it from the Admin Panel first.');
+                        }
 
-                proc.stdout.on('data', (data) => {
-                    const output = data.toString();
-                    const d = activeDownloads.get(dlId) || {};
-                    d.output = output.split('\n').filter(l => l.trim()).pop() || d.output;
-                    const pctMatch = output.match(/(\d+)%/);
-                    if (pctMatch) d.progress = parseInt(pctMatch[1]);
-                    activeDownloads.set(dlId, d);
-                });
+                        activeDownloads.set(dlId, { status: 'downloading', progress: 0, output: `Synchronizing AI Model from peer (${peerIp})...`, type: 'ollama', dest: '' });
 
-                proc.stderr.on('data', (data) => console.error('[LAN Sync] Ollama Pull Error:', data.toString()));
+                        // Correct Internal API path (matches routes above)
+                        const baseUrl = `https://${peerIp}:${port}/api/store`;
+                        const manifestRes = await fetch(`${baseUrl}/ollama/manifest/${encodeURIComponent(filename)}`, { agent });
+                        if (!manifestRes.ok) throw new Error(`Peer does not have manifest for ${filename} (Status: ${manifestRes.status})`);
 
-                proc.on('close', (code) => {
-                    if (code === 0) {
-                        activeDownloads.set(dlId, { ...activeDownloads.get(dlId), status: 'complete', progress: 100 });
-                    } else {
-                        activeDownloads.set(dlId, { ...activeDownloads.get(dlId), status: 'failed', output: 'Ollama pull failed.' });
+                        const manifest = await manifestRes.json();
+                        const blobs = [manifest.config, ...manifest.layers];
+                        const totalModelSize = blobs.reduce((sum, b) => sum + (b.size || 0), 0);
+                        let completedBlobs = 0;
+
+                        const pdl = activeDownloads.get(dlId) || {};
+                        activeDownloads.set(dlId, {
+                            ...pdl,
+                            status: 'downloading',
+                            progress: 0,
+                            totalBytes: totalModelSize,
+                            progressBytes: 0,
+                            subDownloads: {}
+                        });
+
+                        let ollamaBase = process.env.OLLAMA_MODELS || (process.platform === 'win32'
+                            ? path.join(process.env.USERPROFILE, '.ollama', 'models')
+                            : path.join(os.homedir(), '.ollama', 'models'));
+
+                        let blobsDir = path.join(ollamaBase, 'blobs');
+                        try {
+                            if (!fs.existsSync(blobsDir)) fs.mkdirSync(blobsDir, { recursive: true });
+                        } catch (e) {
+                            console.warn(`[Ollama Sync] Cannot write to ${blobsDir}, falling back to local downloads dir`);
+                            ollamaBase = path.join(DOWNLOADS_DIR, '.ollama', 'models');
+                            blobsDir = path.join(ollamaBase, 'blobs');
+                            if (!fs.existsSync(blobsDir)) fs.mkdirSync(blobsDir, { recursive: true });
+                        }
+
+                        for (const blob of blobs) {
+                            const digest = blob.digest;
+                            const targetPath = path.join(blobsDir, digest.replace(':', '-'));
+
+                            console.log(`[Ollama Sync] Checking blob: ${digest}`);
+                            if (!fs.existsSync(targetPath)) {
+                                console.log(`[Ollama Sync] Pulling missing blob: ${digest}`);
+                                const blobUrl = `${baseUrl}/ollama/blobs/${encodeURIComponent(digest)}`;
+
+                                // pass dlId as parentDlId so downloadFile updates the main progress
+                                await downloadFile(blobUrl, targetPath, `${dlId}-${digest}`, activeDownloads, activeProcesses, 5, true, dlId);
+                            } else {
+                                console.log(`[Ollama Sync] Blob already exists: ${digest}`);
+                                // Mark as already downloaded in the parent tracker
+                                const d = activeDownloads.get(dlId) || {};
+                                const subDownloads = d.subDownloads || {};
+                                subDownloads[`${dlId}-${digest}`] = { downloaded: blob.size || 0, total: blob.size || 0 };
+
+                                // Calculate aggregate progress immediately for existing blobs
+                                let totalDownloaded = 0;
+                                let totalToDownload = d.totalBytes || 0;
+                                Object.values(subDownloads).forEach(sub => { totalDownloaded += sub.downloaded; });
+
+                                activeDownloads.set(dlId, {
+                                    ...d,
+                                    subDownloads,
+                                    progressBytes: totalDownloaded,
+                                    progress: totalToDownload > 0 ? Math.round((totalDownloaded / totalToDownload) * 100) : d.progress
+                                });
+                            }
+
+                            completedBlobs++;
+                            const d = activeDownloads.get(dlId) || {};
+                            d.output = `Syncing layers... ${completedBlobs}/${blobs.length} complete`;
+                            activeDownloads.set(dlId, d);
+                        }
+
+                        // Save the manifest locally so local Ollama sees it
+                        console.log(`[Ollama Sync] Writing manifest for ${filename}`);
+                        const [repo, tag] = filename.includes(':') ? filename.split(':') : [filename, 'latest'];
+                        const localManifestPath = path.join(ollamaBase, 'manifests', 'registry.ollama.ai', 'library', repo, tag);
+                        fs.mkdirSync(path.dirname(localManifestPath), { recursive: true });
+                        fs.writeFileSync(localManifestPath, JSON.stringify(manifest));
+
+                        console.log(`[Ollama Sync] Successfully completed sync for ${filename}`);
+                        activeDownloads.set(dlId, { ...activeDownloads.get(dlId), status: 'complete', progress: 100, output: `Model ${filename} synced offline from peer!` });
+                    } catch (err) {
+                        console.error(`[Ollama Sync] FAILED for ${filename}:`, err.message);
+                        activeDownloads.set(dlId, { ...activeDownloads.get(dlId), status: 'failed', output: `Offline sync failed: ${err.message}` });
                     }
-                    activeProcesses.delete(dlId);
-                });
+                })();
 
             } else {
                 // Download file using existing HTTP stream infrastructure

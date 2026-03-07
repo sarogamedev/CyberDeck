@@ -17,11 +17,14 @@ const LLMModule = {
                         <div class="module-title">AI Chat</div>
                         <div class="module-subtitle" id="llmStatus">Checking Ollama...</div>
                     </div>
-                    <div class="model-selector">
-                        <label>Model:</label>
-                        <select id="modelSelect" onchange="LLMModule.selectedModel = this.value">
-                            <option value="">Loading...</option>
-                        </select>
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <button class="btn btn-sm btn-outline" id="refreshModelsBtn" onclick="LLMModule.checkStatus()" title="Refresh Models">🔄</button>
+                        <div class="model-selector">
+                            <label>Model:</label>
+                            <select id="modelSelect" onchange="LLMModule.selectedModel = this.value">
+                                <option value="">Loading...</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
                 <div class="chat-messages" id="chatMessages">
@@ -41,6 +44,11 @@ const LLMModule = {
     },
 
     async checkStatus() {
+        const btn = document.getElementById('refreshModelsBtn');
+        if (btn) {
+            btn.style.transition = 'transform 0.5s ease';
+            btn.style.transform = 'rotate(360deg)';
+        }
         try {
             const res = await authFetch(`${API}/api/llm/status`);
             const data = await res.json();
@@ -50,16 +58,23 @@ const LLMModule = {
                 statusEl.textContent = `Ollama running · ${data.models?.length || 0} models`;
                 this.models = data.models || [];
                 const select = document.getElementById('modelSelect');
+                const current = select.value || this.selectedModel;
+
                 select.innerHTML = this.models.map(m =>
-                    `<option value="${m.name}">${m.name}</option>`
+                    `<option value="${m.name}" ${m.name === current ? 'selected' : ''}>${m.name}</option>`
                 ).join('') || '<option value="">No models</option>';
-                this.selectedModel = this.models[0]?.name || '';
+
+                this.selectedModel = select.value || (this.models[0]?.name || '');
+                statusEl.style.color = '';
             } else {
                 statusEl.textContent = 'Ollama not running — start it from Admin Panel';
                 statusEl.style.color = 'var(--yellow)';
             }
         } catch (err) {
             document.getElementById('llmStatus').textContent = 'Cannot connect to server';
+        }
+        if (btn) {
+            setTimeout(() => { btn.style.transform = 'rotate(0deg)'; }, 500);
         }
     },
 

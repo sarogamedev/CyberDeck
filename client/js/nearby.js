@@ -7,7 +7,9 @@ const NearbyModule = {
     selectedPeer: null,
     peerLibrary: null,
     pollTimer: null,
-    selfIp: '...',
+    selfIp: 'Detecting...',
+    peerItems: [],
+    activePulls: JSON.parse(localStorage.getItem('nearby_active_pulls') || '[]'),
 
     async init() {
         const el = document.getElementById('mod-nearby');
@@ -47,8 +49,27 @@ const NearbyModule = {
             const res = await authFetch(`${API}/api/peers`);
             const data = await res.json();
             this.peers = data.peers || [];
-            if (data.self) this.selfIp = data.self;
+            if (data.self && data.self !== '127.0.0.1' && data.self !== '::1') {
+                this.selfIp = data.self;
+            } else {
+                const currentHost = window.location.hostname;
+                if (currentHost !== 'localhost' && currentHost !== '127.0.0.1') {
+                    this.selfIp = currentHost;
+                } else if (data.self) {
+                    this.selfIp = data.self;
+                }
+            }
             this.renderPeers();
+
+            // Auto-reconnect if we have a saved peer
+            if (this.selectedPeer && this.peerItems.length === 0) {
+                this.connectToPeer(this.selectedPeer);
+            }
+
+            // Resume polling for saved active pulls
+            if (this.activePulls && Array.isArray(this.activePulls)) {
+                this.activePulls.forEach(id => this.pollPullProgress(id));
+            }
         } catch (err) {
             el.innerHTML = `<div class="empty-state"><h3>Discovery Error</h3><p>${err.message}</p></div>`;
         }
@@ -132,35 +153,36 @@ const NearbyModule = {
 
             if (!data.success) {
                 libEl.innerHTML = `<div class="empty-state"><h3>❌ Connection Failed</h3><p>${data.error || 'Could not reach peer.'}</p>
-                    <p style="font-size:12px;color:var(--text-dim);">Make sure the other CyberDeck is running on port 8443.</p></div>`;
+                    <p style="font-size:12px;color:var(--text-dim);">Make sure the other CyberDeck is running on port 8443.</p>
+                    <button class="btn btn-sm" onclick="NearbyModule.connectToPeer('${ip}')">🔄 Retry</button></div>`;
                 return;
             }
 
-            this.peerLibrary = data;
+            localStorage.setItem('nearby_selected_peer', ip);
+            this.peerItems = data.items || [];
             this.renderLibrary();
         } catch (err) {
-            libEl.innerHTML = `<div class="empty-state"><h3>❌ Error</h3><p>${err.message}</p></div>`;
+            libEl.innerHTML = `<div class="empty-state"><h3>❌ Error</h3><p>${err.message}</p>
+                <button class="btn btn-sm" onclick="NearbyModule.connectToPeer('${ip}')">🔄 Retry</button></div>`;
         }
     },
 
     renderLibrary() {
         const el = document.getElementById('nearby-library');
-        const data = this.peerLibrary;
-        if (!data || !data.items) { el.innerHTML = '<div class="empty-state"><h3>No data</h3></div>'; return; }
-
-        if (data.items.length === 0) {
-            el.innerHTML = `<div class="empty-state"><h3>📭 Empty Library</h3><p>${data.node || this.selectedPeer} has no content to share.</p></div>`;
+        const items = this.peerItems;
+        if (!items || items.length === 0) {
+            el.innerHTML = `<div class="empty-state"><h3>📭 Empty Library</h3><p>${this.selectedPeer} has no content to share.</p></div>`;
             return;
         }
 
         let html = `<div style="margin-bottom: 16px; display: flex; align-items: center; gap: 10px;">
-            <span style="font-size: 14px;">🖥️ <strong style="color: var(--cyan);">${data.node || this.selectedPeer}</strong></span>
-            <span class="tag tag-cyan">${data.items.length} item${data.items.length !== 1 ? 's' : ''}</span>
+            <span style="font-size: 14px;">🖥️ <strong style="color: var(--cyan);">${this.selectedPeer}</strong></span>
+            <span class="tag tag-cyan">${items.length} item${items.length !== 1 ? 's' : ''}</span>
             <button class="btn btn-sm" style="font-size:12px;" onclick="NearbyModule.selectPeer('${this.selectedPeer}')">🔄 Refresh</button>
         </div>`;
 
         html += '<div class="store-grid">';
-        for (const item of data.items) {
+        items.forEach((item, index) => {
             const sizeMB = parseFloat(item.sizeMB) || (item.sizeBytes / (1024 * 1024));
             const sizeDisplay = sizeMB > 1024 ? (sizeMB / 1024).toFixed(1) + ' GB' : sizeMB.toFixed(0) + ' MB';
             const lic = item.license || {};
@@ -180,34 +202,46 @@ const NearbyModule = {
                         ${lic.source ? `<span style="color:var(--text-dim);">${lic.source}</span>` : ''}
                     </div>` : ''}
                     <div class="store-item-actions">
-                        <div class="store-progress" id="prog-${dlId}" style="display:none">
+                        <div class="store-progress" id="prog-${dlId}" style="display:none; flex-direction: column; gap: 8px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px;">
+                                <span id="speed-${dlId}" style="color: var(--cyan);">0 B/s</span>
+                                <span id="text-${dlId}">0%</span>
+                            </div>
                             <div class="store-progress-bar">
                                 <div class="store-progress-fill" id="fill-${dlId}"></div>
                             </div>
-                            <span class="store-progress-text" id="text-${dlId}"></span>
+                            <div style="display: flex; gap: 4px;">
+                                <button class="btn btn-sm" id="pause-${dlId}" onclick="NearbyModule.controlPull('${dlId}', 'pause')" style="font-size: 9px; padding: 2px 6px;">⏸️ Pause</button>
+                                <button class="btn btn-sm" id="resume-${dlId}" onclick="NearbyModule.controlPull('${dlId}', 'resume')" style="font-size: 9px; padding: 2px 6px; display: none;">▶️ Resume</button>
+                                <button class="btn btn-sm" id="cancel-${dlId}" onclick="NearbyModule.controlPull('${dlId}', 'cancel')" style="font-size: 9px; padding: 2px 6px; color: var(--red);">✖️ Cancel</button>
+                            </div>
                         </div>
                         ${item.pullable !== false
                     ? `<button class="btn btn-primary btn-sm" id="btn-${dlId}"
-                                onclick="NearbyModule.pullContent('${this.selectedPeer}', '${item.filename}', ${JSON.stringify(JSON.stringify(lic))})">
+                                onclick="NearbyModule.pullContent(${index})">
                                 📥 Pull
                               </button>`
                     : `<span style="font-size:11px;color:var(--text-dim);font-style:italic;">Available on peer</span>`
                 }
                     </div>
                 </div>`;
-        }
+        });
         html += '</div>';
 
         el.innerHTML = html;
     },
 
-    async pullContent(peerIp, filename, licenseDataStr) {
+    async pullContent(itemIndex) {
+        const item = this.peerItems[itemIndex];
+        if (!item) return;
+
+        const peerIp = this.selectedPeer;
+        const filename = item.filename;
+        const licenseData = item.license;
+
         const dlId = `peer-${filename}`;
         const btn = document.getElementById(`btn-${dlId}`);
         const prog = document.getElementById(`prog-${dlId}`);
-
-        let licenseData = null;
-        try { licenseData = JSON.parse(licenseDataStr); } catch (e) { }
 
         if (btn) { btn.disabled = true; btn.textContent = '⏳ Pulling...'; }
         if (prog) prog.style.display = 'flex';
@@ -216,7 +250,7 @@ const NearbyModule = {
             const res = await authFetch(`${API}/api/store/peer/pull`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ peerIp, filename, licenseData })
+                body: JSON.stringify({ peerIp, filename, licenseData, type: item.type })
             });
             const data = await res.json();
 
@@ -227,6 +261,10 @@ const NearbyModule = {
                 return;
             }
 
+            if (!this.activePulls.includes(dlId)) {
+                this.activePulls.push(dlId);
+                localStorage.setItem('nearby_active_pulls', JSON.stringify(this.activePulls));
+            }
             this.pollPullProgress(dlId);
         } catch (err) {
             if (btn) { btn.disabled = false; btn.textContent = '📥 Pull'; }
@@ -238,27 +276,63 @@ const NearbyModule = {
     async pollPullProgress(dlId) {
         const fill = document.getElementById(`fill-${dlId}`);
         const text = document.getElementById(`text-${dlId}`);
+        const speedEl = document.getElementById(`speed-${dlId}`);
         const btn = document.getElementById(`btn-${dlId}`);
+        const pauseBtn = document.getElementById(`pause-${dlId}`);
+        const resumeBtn = document.getElementById(`resume-${dlId}`);
+
+        let lastBytes = 0;
+        let lastTime = Date.now();
 
         const check = async () => {
             try {
                 const res = await authFetch(`${API}/api/store/progress/${dlId}`);
                 const data = await res.json();
 
-                if (data.status === 'downloading') {
+                if (data.status === 'downloading' || data.status === 'paused') {
                     if (fill) fill.style.width = data.progress + '%';
                     if (text) text.textContent = data.progress + '%';
                     if (btn) btn.textContent = '⏳ ' + data.progress + '%';
+
+                    if (data.status === 'paused') {
+                        if (pauseBtn) pauseBtn.style.display = 'none';
+                        if (resumeBtn) resumeBtn.style.display = 'block';
+                        if (speedEl) speedEl.textContent = 'Paused';
+                    } else {
+                        if (pauseBtn) pauseBtn.style.display = 'block';
+                        if (resumeBtn) resumeBtn.style.display = 'none';
+
+                        // Calculate speed
+                        const now = Date.now();
+                        const duration = (now - lastTime) / 1000;
+                        if (duration >= 1) {
+                            const bytes = data.progressBytes || 0;
+                            const speed = (bytes - lastBytes) / duration;
+                            if (speedEl) speedEl.textContent = speed > 1024 * 1024
+                                ? (speed / (1024 * 1024)).toFixed(1) + ' MB/s'
+                                : (speed / 1024).toFixed(1) + ' KB/s';
+                            lastBytes = bytes;
+                            lastTime = now;
+                        }
+                    }
                     setTimeout(check, 2000);
                 } else if (data.status === 'complete') {
                     if (fill) { fill.style.width = '100%'; fill.style.background = 'var(--green)'; }
                     if (text) text.textContent = '✅ Complete!';
                     if (btn) { btn.textContent = '✅ Done'; btn.disabled = true; }
-                } else if (data.status === 'failed' || data.status === 'corrupted') {
+                    if (speedEl) speedEl.textContent = 'Finished';
+                    this.activePulls = this.activePulls.filter(id => id !== dlId);
+                    localStorage.setItem('nearby_active_pulls', JSON.stringify(this.activePulls));
+                } else if (data.status === 'failed' || data.status === 'corrupted' || data.status === 'cancelled') {
                     if (fill) { fill.style.width = '100%'; fill.style.background = 'var(--red)'; }
-                    if (text) text.textContent = '❌ Failed';
+                    if (text) text.textContent = data.status === 'cancelled' ? '✖️ Cancelled' : '❌ Failed';
                     if (btn) { btn.textContent = '📥 Retry'; btn.disabled = false; }
-                    if (data.output) alert('Transfer failed:\n' + data.output);
+                    if (speedEl) speedEl.textContent = '';
+                    if (data.status === 'cancelled') {
+                        this.activePulls = this.activePulls.filter(id => id !== dlId);
+                        localStorage.setItem('nearby_active_pulls', JSON.stringify(this.activePulls));
+                    }
+                    if (data.status === 'failed' && data.output) alert('Transfer failed:\n' + data.output);
                 } else {
                     setTimeout(check, 3000);
                 }
@@ -267,5 +341,22 @@ const NearbyModule = {
             }
         };
         check();
+    },
+
+    async controlPull(dlId, action) {
+        try {
+            await authFetch(`${API}/api/store/progress/${dlId}/${action}`, { method: 'POST' });
+            if (action === 'cancel') {
+                const prog = document.getElementById(`prog-${dlId}`);
+                if (prog) prog.style.display = 'none';
+                const btn = document.getElementById(`btn-${dlId}`);
+                if (btn) { btn.disabled = false; btn.textContent = '📥 Pull'; }
+            } else {
+                // Discover updated status immediately
+                this.pollPullProgress(dlId);
+            }
+        } catch (e) {
+            alert(`Failed to ${action} transfer: ${e.message}`);
+        }
     }
 };
