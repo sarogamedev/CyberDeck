@@ -32,7 +32,7 @@ CyberDeck A                          CyberDeck B
 └───────────────┘                   └───────────────┘
 ```
 
-Nodes discover each other automatically via **mDNS** and **UDP Subnet Beacons** (bypasses Android hotspot restrictions). When two CyberDecks come within range, they perform TLS-encrypted background sync — no user action needed.
+Nodes discover each other automatically via **mDNS** and **UDP Subnet Beacons** (bypasses Android hotspot restrictions). When two CyberDecks come within range, they perform TLS-encrypted background sync - no user action needed.
 
 ## 🧠 Knowledge & AI (Offline)
 
@@ -66,7 +66,7 @@ CyberDeck includes a built-in store for downloading open-source knowledge packs,
 | 🎵 **Music** | Stream FLAC/MP3/OGG with metadata, album art, visualizer, and persistent queue. |
 | 📸 **Photos** | Photo gallery with lazy thumbnails, date grouping, EXIF data, and lightbox viewer. |
 | 🎬 **Videos** | Stream videos with range-request seeking and fullscreen support. |
-| 🔒 **Vault** | AES-256-GCM encrypted storage. Zero-knowledge — encryption happens in-browser. |
+| 🔒 **Vault** | AES-256-GCM encrypted storage. Zero-knowledge - encryption happens in-browser. |
 
 ## 🛠️ Utilities
 
@@ -139,7 +139,7 @@ Host Device (Termux/PC)                 Client (Any Browser)
 └──────────────────────┘               └──────────────────────┘
 ```
 
-Built with Vanilla JavaScript, HTML, and CSS — no heavy frameworks. Optimized for maximum performance on low-end devices and rapid loading over local networks.
+Built with Vanilla JavaScript, HTML, and CSS - no heavy frameworks. Optimized for maximum performance on low-end devices and rapid loading over local networks.
 
 ## 📋 Requirements
 - **Host**: Node.js 18+ (Android via Termux, Linux, Windows, macOS)
