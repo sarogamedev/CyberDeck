@@ -44,6 +44,7 @@ Nodes discover each other automatically via **mDNS** and **UDP Subnet Beacons** 
 | 📡 **Nearby** | Auto-discover other CyberDecks on your LAN and **pull content/models offline** from them via specialized P2P protocols. |
 | 📖 **Ebooks** | EPUB reader and PDF viewer with saved reading progress. |
 | 🛡️ **Survival** | Built-in offline survival guides (Water, Fire, Shelter, First Aid, Navigation). |
+| 🛡️ **Security Hardened** | HMAC-signed file IDs, DTN resource quotas, Vault AES-256-GCM, and strictly sanitized UI. |
 
 ## 📦 Content Store & Distribution
 
@@ -113,16 +114,16 @@ node server.js
 The server displays your LAN IP. Open it on any device on the same network:
 - **Client App**: `http://<ip>:8888`
 - **Admin Panel**: `http://<ip>:8888/admin`
+- **Secure Mode (HTTPS)**: `https://<ip>:8443` (Required for Mesh/Camera/Microphone features)
 
 *(Default credentials: `admin` / `cyberdeck` - change immediately in Admin Panel).*
 
 ## 🔌 Admin Panel (`/admin`)
 
-- **Security**: Change access credentials
+- **Security**: Change access credentials and rotate HMAC secrets
 - **Services**: Start/stop Ollama and Kiwix
 - **Library Scanning**: Force rescan media directories
 - **Configuration**: Customize directory paths
-- **Terminal**: Run shell commands from your browser
 - **Metrics**: Real-time performance graphing
 
 ## 🏗️ Architecture
@@ -155,6 +156,17 @@ CyberDeck integrates with optional external software:
 - **[Ollama](https://ollama.ai/)** – Local AI model runtime
 
 *These services are installed separately and licensed under their respective open-source licenses.*
+
+## 🛡️ Security Audit & Hardening
+
+CyberDeck has undergone a comprehensive multi-phase security audit to ensure a robust defense-in-depth posture:
+
+- **Logic Hardening**: Strict path normalization and validation to prevent Path Traversal.
+- **Data Integrity**: HMAC-signed File IDs prevent predictable access and tampering.
+- **Resource Protection**: DTN Spool quotas (max 500 packets / 2MB per payload) prevent disk exhaustion attacks.
+- **Encryption**: AES-256-GCM Vault with per-vault random salts and server-side session management.
+- **UI Sanitization**: Comprehensive HTML escaping across all interactive modules to eliminate DOM XSS.
+- **API Security**: Forced same-origin CORS, rate-limited authentication, and WebSocket token verification.
 
 ## 📄 License
 
