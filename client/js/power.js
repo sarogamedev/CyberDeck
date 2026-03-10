@@ -11,7 +11,7 @@ const PowerModule = {
                     <div class="module-title">Power Manager</div>
                     <div class="module-subtitle">System resources & battery</div>
                 </div>
-                <button class="btn" id="lowPowerBtn" onclick="PowerModule.toggleLowPower()">⚡ Low Power Mode</button>
+                <button class="btn" id="lowPowerBtn" onclick="PowerModule.toggleLowPower()">Low Power Mode</button>
             </div>
             <div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">
                 <div class="card"><h3 style="color:var(--cyan);margin-bottom:12px">🔋 Battery</h3><div id="battInfo">Loading...</div></div>
@@ -91,7 +91,7 @@ const PowerModule = {
         try {
             const r = await authFetch(`${API}/api/power/low-power`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: this.lowPower }) });
             const d = await r.json();
-            document.getElementById('lowPowerBtn').textContent = this.lowPower ? '🔋 Normal Mode' : '⚡ Low Power Mode';
+            document.getElementById('lowPowerBtn').textContent = this.lowPower ? '🔋 Normal Mode' : 'Low Power Mode';
             alert(d.message);
             this.refresh();
         } catch (e) { alert('Error: ' + e.message); }

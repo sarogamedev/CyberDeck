@@ -129,92 +129,138 @@ app.get('/third-party', (req, res) => {
     <title>CyberDeck — Third Party Licenses</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --primary: #ffaa00;
+            --primary-glow: rgba(255, 170, 0, 0.3);
+            --bg: #000000;
+            --surface: #0c0c0c;
+            --surface2: #161616;
+            --border: #222222;
+        }
         body {
-            background: #06060b;
-            color: #c0c0d0;
-            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
-            padding: 40px 24px;
-            max-width: 960px;
+            background: var(--bg);
+            color: #e0e0e0;
+            font-family: 'JetBrains Mono', 'Segoe UI', monospace;
+            padding: 60px 24px;
+            max-width: 1000px;
             margin: 0 auto;
             line-height: 1.6;
+            position: relative;
+            overflow-x: hidden;
+        }
+        /* Grid background */
+        body::before {
+            content: "";
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-image: 
+                linear-gradient(rgba(255, 170, 0, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 170, 0, 0.05) 1px, transparent 1px);
+            background-size: 50px 50px;
+            z-index: -1;
+            pointer-events: none;
+        }
+        /* Scanline effect */
+        body::after {
+            content: " ";
+            display: block;
+            position: fixed;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            z-index: 1000;
+            background-size: 100% 4px, 3px 100%;
+            pointer-events: none;
+            opacity: 0.15;
         }
         h1 {
-            color: #00f0ff;
-            font-size: 28px;
-            margin-bottom: 8px;
-            letter-spacing: -0.5px;
+            color: var(--primary);
+            font-size: 32px;
+            margin-bottom: 12px;
+            text-shadow: 0 0 10px var(--primary-glow);
+            text-transform: uppercase;
+            letter-spacing: 2px;
         }
         h2 {
-            color: #a78bfa;
-            font-size: 20px;
-            margin-top: 40px;
-            margin-bottom: 16px;
+            color: var(--primary);
+            font-size: 18px;
+            margin-top: 48px;
+            margin-bottom: 20px;
             padding-bottom: 8px;
-            border-bottom: 1px solid #2a2a3e;
+            border-bottom: 1px solid var(--border);
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
         p {
-            margin-bottom: 12px;
+            margin-bottom: 16px;
             font-size: 14px;
-            color: #8888a0;
+            color: #aaa;
         }
         table {
             width: 100%;
             border-collapse: separate;
             border-spacing: 0;
-            margin: 16px 0 32px 0;
-            border-radius: 10px;
+            margin: 24px 0 40px 0;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
             overflow: hidden;
-            border: 1px solid #2a2a3e;
         }
         thead tr {
-            background: #1a1a2e;
+            background: var(--surface2);
         }
         th {
-            padding: 12px 16px;
+            padding: 16px;
             text-align: left;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 600;
-            color: #00f0ff;
+            color: var(--primary);
             text-transform: uppercase;
-            letter-spacing: 0.5px;
-            border-bottom: 2px solid #2a2a3e;
+            letter-spacing: 1.5px;
+            border-bottom: 2px solid var(--border);
         }
         td {
-            padding: 12px 16px;
+            padding: 14px 16px;
             font-size: 13px;
-            border-bottom: 1px solid #1a1a2e;
-            color: #c0c0d0;
+            border-bottom: 1px solid var(--border);
+            color: #ddd;
         }
         tbody tr {
-            background: #0d0d14;
+            background: transparent;
             transition: background 0.2s;
         }
         tbody tr:hover {
-            background: #14142a;
+            background: rgba(255, 170, 0, 0.05);
         }
         tbody tr:last-child td {
             border-bottom: none;
         }
         a {
-            color: #00f0ff;
-            text-decoration: none;
+            color: var(--primary);
+            text-decoration: underline;
             transition: opacity 0.2s;
         }
-        a:hover { opacity: 0.7; text-decoration: underline; }
-        strong { color: #ffffff; }
+        a:hover { opacity: 0.7; }
+        strong { color: #fff; }
         .back-link {
             display: inline-block;
-            margin-top: 40px;
-            padding: 10px 20px;
-            background: #1a1a2e;
-            border: 1px solid #2a2a3e;
-            border-radius: 8px;
-            color: #00f0ff;
-            font-size: 14px;
+            margin-top: 60px;
+            padding: 12px 24px;
+            background: var(--surface2);
+            border: 1px solid var(--primary);
+            color: var(--primary);
+            font-size: 13px;
             text-decoration: none;
-            transition: background 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            border-radius: 0;
+            transition: all 0.2s;
+            box-shadow: 0 0 10px var(--primary-glow);
         }
-        .back-link:hover { background: #24243e; text-decoration: none; }
+        .back-link:hover { 
+            background: var(--primary); 
+            color: #000;
+            box-shadow: 0 0 20px var(--primary-glow);
+        }
     </style>
 </head>
 <body>
@@ -746,7 +792,7 @@ pemsPromise.then(pems => {
 
     console.log('');
     console.log('\x1b[36m  ╔═══════════════════════════════════════╗\x1b[0m');
-    console.log('\x1b[36m  ║\x1b[0m \x1b[33m⚡ \x1b[34mCyberDeck Server Running\x1b[0m \x1b[33m⚡\x1b[0m\x1b[36m        ║\x1b[0m');
+    console.log('\x1b[36m  ║\x1b[0m \x1b[34mCyberDeck Server Running\x1b[0m \x1b[36m        ║\x1b[0m');
     console.log('\x1b[36m  ╚═══════════════════════════════════════╝\x1b[0m');
     console.log('');
 

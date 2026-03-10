@@ -134,4 +134,4 @@ echo -e "  Then open in your browser:"
 echo -e "    ${BOLD}http://localhost:8888${NC} or ${BOLD}http://<your-ip>:8888${NC}"
 echo ""
 
-echo -e "\n${MAGENTA}⚡ CyberDeck is ready to go! ⚡${NC}\n"
+echo -e "\n${MAGENTA}CyberDeck is ready to go!${NC}\n"

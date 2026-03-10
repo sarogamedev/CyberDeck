@@ -152,4 +152,4 @@ if [[ "$pull_model" =~ ^[Yy]$ ]]; then
     success "Model downloaded"
 fi
 
-echo -e "\n${MAGENTA}⚡ CyberDeck is ready to go! ⚡${NC}\n"
+echo -e "\n${MAGENTA}CyberDeck is ready to go!${NC}\n"

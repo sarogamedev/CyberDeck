@@ -105,6 +105,20 @@ if (-not (Test-Path "downloads")) {
 }
 Success "Cache directories created"
 
+Step "Configuring Windows Firewall..."
+try {
+    if ($isAdmin) {
+        Write-Host "  Opening ports 8888 (HTTP) and 8443 (HTTPS) in Windows Firewall..."
+        New-NetFirewallRule -DisplayName "CyberDeck Server (TCP In)" -Direction Inbound -LocalPort 8888,8443 -Protocol TCP -Action Allow -ErrorAction SilentlyContinue | Out-Null
+        New-NetFirewallRule -DisplayName "CyberDeck Beacons (UDP In)" -Direction Inbound -LocalPort 8888,5353 -Protocol UDP -Action Allow -ErrorAction SilentlyContinue | Out-Null
+        Success "Windows Firewall rules added for CyberDeck"
+    } else {
+        Warn "Cannot configure firewall without Administrator privileges. You may receive a prompt or blocks."
+    }
+} catch {
+    Warn "Failed to configure Windows Firewall. Please ensure ports 8888 and 8443 are manually opened."
+}
+
 Step "Setting up Ollama (Local LLM)..."
 if (Get-Command "ollama" -ErrorAction SilentlyContinue) {
     Success "Ollama already installed"
@@ -163,5 +177,5 @@ Write-Host ""
 Write-Host "  Then open in your browser:"
 Write-Host "    http://localhost:8888" -ForegroundColor White
 Write-Host ""
-Write-Host "⚡ CyberDeck is ready to go! ⚡" -ForegroundColor Magenta
+Write-Host "CyberDeck is ready to go!" -ForegroundColor Magenta
 Write-Host ""

@@ -1,4 +1,4 @@
-# CyberDeck ⚡
+# CyberDeck
 
 CyberDeck - A portable offline knowledge, AI, and communication platform. Run local LLMs, Wikipedia, maps, and mesh networking without internet.
 
@@ -167,6 +167,7 @@ CyberDeck has undergone a comprehensive multi-phase security audit to ensure a r
 - **Encryption**: AES-256-GCM Vault with per-vault random salts and server-side session management.
 - **UI Sanitization**: Comprehensive HTML escaping across all interactive modules to eliminate DOM XSS.
 - **API Security**: Forced same-origin CORS, rate-limited authentication, and WebSocket token verification.
+- **P2P TLS Off-Grid Design**: Peer-to-peer syncing uses self-signed certificates and bypasses strict CA validation (`rejectUnauthorized: false`). Because CyberDeck operates completely offline without access to public Certificate Authorities, this is an intentional design tradeoff. The SSRF filter bounds all peer queries exclusively to local, private LAN IPs, minimizing any MITM exposure to your direct physical network.
 
 ## 📄 License
 

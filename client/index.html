@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>CyberDeck</title>
     <meta name="description" content="CyberDeck - Your self-hosted media hub, knowledge base, and file manager">
-    <meta name="theme-color" content="#06060b">
+    <meta name="theme-color" content="#000000">
     <link rel="manifest" href="manifest.json">
     <link rel="stylesheet" href="css/style.css">
     <!-- Leaflet for Maps -->
@@ -17,13 +17,17 @@
 </head>
 
 <body>
+    <div class="bg-grid"></div>
+    <div class="vignette"></div>
+    <div class="scanlines"></div>
+
     <!-- Login Screen -->
     <div class="login-overlay" id="loginOverlay">
         <div class="login-card">
             <div class="login-header">
-                <span class="login-logo">⚡</span>
+                <div class="login-logo"></div>
                 <h1 class="login-title">CyberDeck</h1>
-                <p class="login-subtitle">Enter your credentials to continue</p>
+                <p class="login-subtitle">Mission credentials required</p>
             </div>
             <div class="login-form">
                 <div class="login-field">
@@ -37,7 +41,7 @@
                         onkeydown="if(event.key==='Enter') Auth.login()">
                 </div>
                 <div class="login-error" id="loginError" style="display:none"></div>
-                <button class="login-btn" onclick="Auth.login()">Sign In</button>
+                <button class="login-btn" onclick="Auth.login()">Authorize Access</button>
             </div>
         </div>
     </div>
@@ -46,7 +50,7 @@
     <nav class="sidebar" id="sidebar">
         <div class="sidebar-header">
             <div class="logo">
-                <span class="logo-icon">⚡</span>
+                <span class="logo-icon"></span>
                 <span class="logo-text">CyberDeck</span>
             </div>
             <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()">☰</button>
@@ -142,7 +146,7 @@
     <!-- Mobile Header (hamburger outside sidebar so it's always visible) -->
     <div class="mobile-header" id="mobileHeader">
         <button class="mobile-hamburger" onclick="toggleSidebar()">☰</button>
-        <span class="mobile-title" id="mobileTitle">⚡ CyberDeck</span>
+        <span class="mobile-title" id="mobileTitle">CyberDeck</span>
     </div>
 
     <!-- Main Content -->

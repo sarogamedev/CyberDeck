@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const os = require('os');
 const https = require('https');
 const http = require('http');
+const fetch = require('node-fetch').default || require('node-fetch');
 
 // Strict validation for Ollama model names (e.g. tinyllama:latest, phi3:mini, gemma2:2b)
 const SAFE_MODEL_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/;

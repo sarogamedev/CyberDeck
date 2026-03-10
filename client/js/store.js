@@ -15,9 +15,9 @@ const StoreModule = {
                     <div class="module-title">Content Store</div>
                     <div class="module-subtitle">Download knowledge packs, LLM models & more</div>
                 </div>
-                <div class="store-tabs" style="display:flex; gap:8px; margin-top: 15px; overflow-x:auto; flex-wrap:nowrap; -webkit-overflow-scrolling:touch; padding-bottom:4px;">
-                    <button id="tab-catalog" class="btn btn-primary" style="white-space:nowrap;font-size:13px;" onclick="StoreModule.switchTab('catalog')">📚 Catalog</button>
-                    <button id="tab-downloaded" class="btn" style="background:var(--surface2);white-space:nowrap;font-size:13px;" onclick="StoreModule.switchTab('downloaded')">💾 Downloaded</button>
+                <div class="store-tabs">
+                    <button id="tab-catalog" class="btn btn-primary" onclick="StoreModule.switchTab('catalog')">Catalog</button>
+                    <button id="tab-downloaded" class="btn" onclick="StoreModule.switchTab('downloaded')">Downloaded</button>
                 </div>
             </div>
             <div id="storeContent"><div class="loading-spinner"></div></div>`;
@@ -67,13 +67,13 @@ const StoreModule = {
 
     renderCatalog() {
         const el = document.getElementById('storeContent');
-        let html = `<div style="background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 16px; margin-bottom: 20px; font-size: 12px; color: var(--text-dim);">
-            ⚖️ <strong style="color: var(--cyan);">Attribution Notice:</strong> All downloadable content listed here is provided by third-party open-source projects. CyberDeck does not own, host, or claim ownership of any of these resources. Each item is subject to its original author's license terms. By downloading, you agree to comply with those terms. <a href="/third-party" target="_blank" style="color:var(--cyan);text-decoration:underline;">View all licenses →</a>
+        let html = `<div class="store-notice">
+            <strong>Attribution Notice:</strong> All content is provided by third-party projects. CyberDeck does not claim ownership. Each item is subject to its author's license terms. <a href="/third-party" target="_blank">View Licenses →</a>
         </div>`;
 
         this.catalog.forEach(cat => {
             html += `<div class="store-category">
-                <h3 style="margin-bottom:12px">${cat.icon} ${cat.name}</h3>
+                <h3>${cat.name}</h3>
                 <div class="store-items">`;
 
             cat.items.forEach(item => {
@@ -96,34 +96,33 @@ const StoreModule = {
                 html += `
                     <div class="store-item card">
                         <div class="store-item-header">
-                            <strong>${escapeHtml(item.name)}</strong>
-                            <span class="tag tag-cyan" id="size-${item.id}">${escapeHtml(item.size)}</span>
+                            <div class="store-item-name">${escapeHtml(item.name)}</div>
+                            <span class="store-tag" id="size-${item.id}">${escapeHtml(item.size)}</span>
                         </div>
-                        <p style="font-size:12px;color:var(--text-dim);margin:6px 0">${escapeHtml(item.desc)}</p>
-                        ${item.license ? `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;font-size:10px;">
-                            <span class="tag" style="font-size:10px;color:var(--green);border-color:var(--green);background:transparent;">⚖️ License: ${escapeHtml(item.license)}</span>
-                            ${item.licenseUrl ? `<a href="${escapeHtml(item.licenseUrl)}" target="_blank" rel="noopener noreferrer" style="color:var(--cyan);text-decoration:underline;">View License</a>` : ''}
-                            ${item.source ? `<span style="color:var(--text-dim);">Source: <a href="${escapeHtml(item.sourceUrl || '#')}" target="_blank" rel="noopener noreferrer" style="color:var(--cyan);text-decoration:underline;">${escapeHtml(item.source)}</a></span>` : ''}
-                            ${item.distributor ? `<span style="color:var(--text-dim);font-style:italic;">${escapeHtml(item.distributor)}</span>` : ''}
+                        <div class="store-item-desc">${escapeHtml(item.desc)}</div>
+                        ${item.license ? `<div class="store-item-meta">
+                            <span class="store-tag">LICENSE: ${escapeHtml(item.license)}</span>
+                            ${item.licenseUrl ? `<a href="${escapeHtml(item.licenseUrl)}" target="_blank" rel="noopener noreferrer">VIEW LICENSE</a>` : ''}
+                            ${item.source ? `<span style="color:var(--text-dim);">SOURCE: <a href="${escapeHtml(item.sourceUrl || '#')}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.source)}</a></span>` : ''}
                         </div>` : ''}
                         <div class="store-item-actions">
                             <div class="store-progress" id="prog-${item.id}" style="display:none">
                                 <div class="power-bar"><div class="power-bar-fill" id="fill-${item.id}"></div></div>
                                 <span class="store-prog-text" id="text-${item.id}"></span>
                             </div>
-                            <div style="display:flex;gap:6px;align-items:center flex-wrap:wrap;">
+                            <div class="store-btn-group">
                                 <button class="btn btn-primary" id="btn-${item.id}"
                                     onclick="StoreModule.downloadItem('${item.id}')">
-                                    ${item.type === 'manual' ? '🔗 Info' : '⬇ Download'}
+                                    ${item.type === 'manual' ? 'INFO' : 'DOWNLOAD'}
                                 </button>
-                                <button class="btn" id="revoke-${item.id}" style="display:none;background:var(--surface2);color:#fff;font-size:12px"
-                                    onclick="StoreModule.pauseDownload('${item.id}')">⏸ Pause</button>
-                                <button class="btn" id="resume-${item.id}" style="display:none;background:var(--green);color:#000;font-size:12px"
-                                    onclick="StoreModule.resumeDownload('${item.id}')">▶ Resume</button>
-                                <button class="btn" id="cancel-${item.id}" style="display:none;background:var(--red);color:#fff;padding:6px 10px;font-size:12px"
-                                    onclick="StoreModule.cancelDownload('${item.id}')">✕ Cancel</button>
-                                <button class="btn" id="delete-${item.id}" style="display:none;background:var(--surface2);color:var(--red);border:1px solid var(--red);padding:6px 10px;font-size:12px"
-                                    onclick="StoreModule.deleteItem('${item.id}')">🗑 Delete</button>
+                                <button class="btn" id="revoke-${item.id}" style="display:none;"
+                                    onclick="StoreModule.pauseDownload('${item.id}')">PAUSE</button>
+                                <button class="btn btn-success-tac" id="resume-${item.id}" style="display:none;"
+                                    onclick="StoreModule.resumeDownload('${item.id}')">RESUME</button>
+                                <button class="btn btn-delete" id="cancel-${item.id}" style="display:none;"
+                                    onclick="StoreModule.cancelDownload('${item.id}')">CANCEL</button>
+                                <button class="btn btn-delete" id="delete-${item.id}" style="display:none;"
+                                    onclick="StoreModule.deleteItem('${item.id}')">DELETE</button>
                             </div>
                         </div>
                     </div>`;
@@ -148,14 +147,14 @@ const StoreModule = {
             }
 
             let html = `
-                <div class="card" style="overflow-x: auto;">
-                    <table style="width: 100%; text-align: left; border-collapse: collapse; font-size: 14px;">
+                <div class="store-table-container">
+                    <table class="store-table">
                         <thead>
-                            <tr style="border-bottom: 2px solid var(--border); color: var(--text-dim);">
-                                <th style="padding: 12px; min-width: 150px;">Item Name</th>
-                                <th style="padding: 12px; width: 100px;">Type</th>
-                                <th style="padding: 12px; width: 100px;">Size</th>
-                                <th style="padding: 12px; min-width: 300px;">Path / ID</th>
+                            <tr>
+                                <th>Item Name</th>
+                                <th>Type</th>
+                                <th>Size</th>
+                                <th>Path / ID</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -163,17 +162,16 @@ const StoreModule = {
 
             data.files.forEach(f => {
                 const icon = f.type === 'zim' ? '📚' : (f.type === 'ollama' ? '🧠' : '🗺️');
-                const typeClr = f.type === 'zim' ? 'var(--cyan)' : (f.type === 'ollama' ? '#a855f7' : 'var(--green)');
                 const sizeStr = (f.sizeBytes / 1024 / 1024 / 1024) > 1
                     ? (f.sizeBytes / 1024 / 1024 / 1024).toFixed(2) + ' GB'
                     : (f.sizeBytes / 1024 / 1024).toFixed(1) + ' MB';
 
                 html += `
-                    <tr style="border-bottom: 1px solid var(--border);">
-                        <td style="padding: 12px; font-weight: bold;">${icon} ${escapeHtml(f.name)}</td>
-                        <td style="padding: 12px;"><span class="tag" style="color: ${typeClr}; border-color: ${typeClr}; background: transparent;">${f.type.toUpperCase()}</span></td>
-                        <td style="padding: 12px; font-family: 'JetBrains Mono', monospace;">${sizeStr}</td>
-                        <td style="padding: 12px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-dim); word-break: break-all;">${escapeHtml(f.relativePath || f.name)}</td>
+                    <tr>
+                        <td style="font-weight: bold;">${icon} ${escapeHtml(f.name)}</td>
+                        <td><span class="store-type-tag">${f.type.toUpperCase()}</span></td>
+                        <td style="font-family: 'JetBrains Mono', monospace;">${sizeStr}</td>
+                        <td style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-dim); word-break: break-all;">${escapeHtml(f.relativePath || f.name)}</td>
                     </tr>
                 `;
             });
@@ -215,11 +213,11 @@ const StoreModule = {
                     const fill = document.getElementById(`fill-${id}`);
                     const text = document.getElementById(`text-${id}`);
                     const deleteBtn = document.getElementById(`delete-${id}`);
-                    if (btn) { btn.textContent = '✅ Done'; btn.disabled = true; }
+                    if (btn) { btn.textContent = 'DONE'; btn.disabled = true; }
                     if (prog) prog.style.display = 'flex';
-                    if (fill) { fill.style.width = '100%'; fill.style.background = 'var(--green)'; }
+                    if (fill) { fill.style.width = '100%'; fill.style.background = 'var(--primary)'; }
                     if (text) text.textContent = 'Downloaded';
-                    if (deleteBtn) deleteBtn.style.display = 'inline-block';
+                    if (deleteBtn) deleteBtn.style.display = 'block';
                 }
             }
         } catch (e) { /* silently fail */ }
@@ -355,10 +353,11 @@ const StoreModule = {
                     setTimeout(check, 2000);
                 } else if (data.status === 'downloading') {
                     fill.style.width = data.progress + '%';
+                    fill.style.background = 'var(--primary)';
                     text.textContent = data.progress + '%';
-                    btn.textContent = '⏳ ' + data.progress + '%';
-                    if (cancelBtn) cancelBtn.style.display = 'inline-block';
-                    if (pauseBtn && mdItemType === 'zim') pauseBtn.style.display = 'inline-block';
+                    btn.textContent = data.progress + '%';
+                    if (cancelBtn) cancelBtn.style.display = 'block';
+                    if (pauseBtn && mdItemType === 'zim') pauseBtn.style.display = 'block';
                     if (resumeBtn) resumeBtn.style.display = 'none';
                     setTimeout(check, 2000);
                 } else if (data.status === 'paused') {
@@ -372,14 +371,14 @@ const StoreModule = {
                     // We don't loop here. Resume will restart polling.
                 } else if (data.status === 'complete') {
                     fill.style.width = '100%';
-                    fill.style.background = 'var(--green)';
-                    text.textContent = 'Complete!';
-                    btn.textContent = '✅ Done';
+                    fill.style.background = 'var(--primary)';
+                    text.textContent = 'Complete';
+                    btn.textContent = 'DONE';
                     btn.disabled = true;
                     if (cancelBtn) cancelBtn.style.display = 'none';
                     if (pauseBtn) pauseBtn.style.display = 'none';
                     if (resumeBtn) resumeBtn.style.display = 'none';
-                    if (deleteBtn) deleteBtn.style.display = 'inline-block';
+                    if (deleteBtn) deleteBtn.style.display = 'block';
                 } else if (data.status === 'failed') {
                     fill.style.width = '100%';
                     fill.style.background = 'var(--red)';
