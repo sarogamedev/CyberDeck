@@ -1,0 +1,48 @@
+{
+    "name": "cyberdeck",
+    "version": "1.0.0",
+    "description": "CyberDeck - Resilient OS",
+    "author": "Saro",
+    "main": "electron-main.js",
+    "scripts": {
+        "start": "electron .",
+        "server": "cd server && npm start",
+        "build": "electron-builder"
+    },
+    "build": {
+        "appId": "com.cyberdeck.os",
+        "productName": "CyberDeck",
+        "asar": false,
+        "directories": {
+            "output": "dist"
+        },
+        "win": {
+            "target": [
+                "portable"
+            ],
+            "icon": "CD Logo No Text.png"
+        },
+        "files": [
+            "**/*"
+        ],
+        "extraResources": [
+            "server/kiwix-serve.exe"
+        ]
+    },
+    "dependencies": {
+        "cors": "^2.8.5",
+        "express": "^4.18.2",
+        "mime-types": "^2.1.35",
+        "multer": "^2.0.0",
+        "multicast-dns": "^7.2.5",
+        "music-metadata": "^7.14.0",
+        "node-fetch": "^2.7.0",
+        "selfsigned": "^5.5.0",
+        "sharp": "^0.33.2",
+        "ws": "^8.16.0"
+    },
+    "devDependencies": {
+        "electron": "^31.0.0",
+        "electron-builder": "^24.13.3"
+    }
+}

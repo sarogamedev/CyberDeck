@@ -10,3 +10,5 @@ server/users.json
 server/config.json
 server/dtn_spool/
 CyberDeck-Website/
+dist/
+node_modules/
