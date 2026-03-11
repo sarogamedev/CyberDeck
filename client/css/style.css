@@ -1608,8 +1608,34 @@ body {
 
 .login-btn:hover {
     box-shadow: var(--glow-primary);
+}
+
+.login-btn-admin {
+    width: 100%;
+    padding: 10px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition);
+    font-family: 'JetBrains Mono', monospace;
+    margin-top: 16px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.login-btn-admin:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+    box-shadow: var(--glow-primary);
     transform: translateY(-1px);
-    filter: brightness(1.1);
 }
 
 /* User Info in Sidebar */

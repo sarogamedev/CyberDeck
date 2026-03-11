@@ -86,8 +86,9 @@ const Auth = {
                 headers: { 'x-auth-token': Auth.token }
             });
         } catch { /* ignore */ }
+        Auth.stopBackgroundTasks();
         Auth.clearSession();
-        Auth.showLogin();
+        Auth.showLogin(true); // Force clear on deliberate logout
     },
 
     clearSession() {
@@ -95,14 +96,50 @@ const Auth = {
         Auth.user = null;
         localStorage.removeItem('cyberdeck_token');
         localStorage.removeItem('cyberdeck_user');
+        Auth.stopBackgroundTasks();
     },
 
-    showLogin() {
-        document.getElementById('loginOverlay').classList.remove('hidden');
+    stopBackgroundTasks() {
+        if (Auth.connInterval) clearInterval(Auth.connInterval);
+        
+        // Stop module-specific intervals
+        if (window.PowerModule && window.PowerModule._interval) {
+            clearInterval(window.PowerModule._interval);
+            window.PowerModule._interval = null;
+        }
+        if (window.NearbyModule && window.NearbyModule.pollTimer) {
+            clearInterval(window.NearbyModule.pollTimer);
+            window.NearbyModule.pollTimer = null;
+        }
+        if (window.ChatModule && window.ChatModule.dtnSyncInterval) {
+            clearInterval(window.ChatModule.dtnSyncInterval);
+            window.ChatModule.dtnSyncInterval = null;
+        }
+        if (window.DtnModule && window.DtnModule._interval) {
+            clearInterval(window.DtnModule._interval);
+            window.DtnModule._interval = null;
+        }
+
+        // Reset module load states so they re-init on next login
+        document.querySelectorAll('.module').forEach(m => {
+            delete m.dataset.loaded;
+            m.innerHTML = ''; 
+        });
+    },
+
+    showLogin(forceClear = false) {
+        const overlay = document.getElementById('loginOverlay');
+        const isAlreadyVisible = !overlay.classList.contains('hidden');
+
+        overlay.classList.remove('hidden');
         document.getElementById('loginError').style.display = 'none';
-        document.getElementById('loginUsername').value = '';
-        document.getElementById('loginPassword').value = '';
-        document.getElementById('loginUsername').focus();
+
+        // Clear if forced OR if we are switching from app view to login view
+        if (forceClear || !isAlreadyVisible) {
+            document.getElementById('loginUsername').value = '';
+            document.getElementById('loginPassword').value = '';
+            document.getElementById('loginUsername').focus();
+        }
     },
 
     showApp() {
@@ -114,7 +151,11 @@ const Auth = {
 
         // Initialize first module
         switchModule('music');
+        
+        // Start background tasks
         checkConnection();
+        if (Auth.connInterval) clearInterval(Auth.connInterval);
+        Auth.connInterval = setInterval(checkConnection, 30000);
     }
 };
 
