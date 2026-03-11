@@ -5,9 +5,41 @@ const fs = require('fs');
 const os = require('os');
 const { requireAuth, requireAdmin } = require('./utils/auth');
 
+// Data home resolution for persistence
+const dataHome = process.env.CYBERDECK_DATA_HOME;
+if (dataHome && !fs.existsSync(dataHome)) {
+    fs.mkdirSync(dataHome, { recursive: true });
+}
+
 // Load config
-const configPath = path.join(__dirname, 'config.json');
+const defaultConfigPath = path.join(__dirname, 'config.json');
+const configPath = dataHome ? path.join(dataHome, 'config.json') : defaultConfigPath;
+
+// Migrate/Initialize config if using a custom data home
+if (dataHome && !fs.existsSync(configPath)) {
+    const defaultConfig = fs.readFileSync(defaultConfigPath, 'utf-8');
+    fs.writeFileSync(configPath, defaultConfig);
+}
+
 let config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+
+// If using persistent storage, ensure all relative paths are resolved relative to the data home
+if (dataHome) {
+    if (config.paths) {
+        for (const key in config.paths) {
+            if (!path.isAbsolute(config.paths[key])) {
+                config.paths[key] = path.resolve(dataHome, config.paths[key]);
+            }
+        }
+    }
+    if (config.services?.maps?.tilesPath && !path.isAbsolute(config.services.maps.tilesPath)) {
+        config.services.maps.tilesPath = path.resolve(dataHome, config.services.maps.tilesPath);
+    }
+    if (config.thumbnails?.cachePath && !path.isAbsolute(config.thumbnails.cachePath)) {
+        config.thumbnails.cachePath = path.resolve(dataHome, config.thumbnails.cachePath);
+    }
+}
+
 const mDnsName = config.mDnsName || 'cyberdeck';
 
 const app = express();
@@ -56,7 +88,12 @@ app.use((req, res, next) => {
 });
 
 // Serve client app at root
-app.use('/', express.static(path.join(__dirname, '..', 'client')));
+// In Electron, we want to ensure the path is resolved correctly relative to the app root
+const clientPath = path.resolve(__dirname, '..', 'client');
+
+
+
+app.use('/', express.static(clientPath));
 
 // Third-Party Licenses Page
 app.use('/third-party', require('./routes/licenses'));

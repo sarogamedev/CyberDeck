@@ -2,11 +2,11 @@
     "port": 8888,
     "mDnsName": "cyberdeck",
     "paths": {
-        "music": "/sdcard/Music",
-        "photos": "/sdcard/DCIM",
-        "videos": "/sdcard/Movies",
-        "ebooks": "/sdcard/Books",
-        "root": "/sdcard"
+        "music": "Music",
+        "photos": "DCIM",
+        "videos": "Movies",
+        "ebooks": "Books",
+        "root": "."
     },
     "services": {
         "ollama": {

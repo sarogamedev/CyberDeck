@@ -195,6 +195,29 @@
             filter: brightness(1.1);
         }
 
+        .login-btn-outline {
+            width: 100%;
+            padding: 10px;
+            background: transparent;
+            border: 1px solid var(--border);
+            border-radius: 2px;
+            color: var(--text-dim);
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-family: 'JetBrains Mono', monospace;
+            margin-top: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .login-btn-outline:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+            box-shadow: var(--glow-primary);
+        }
+
         /* Header */
         .header {
             background: linear-gradient(135deg, var(--surface) 0%, var(--surface2) 100%);
@@ -573,6 +596,9 @@
         </div>
         <div class="login-error" id="loginError"></div>
         <button class="login-btn" onclick="adminLogin()">Sign In</button>
+        <button class="login-btn-outline" onclick="window.location.href='/'">
+            Return to Deck
+        </button>
     </div>
 </div>
 
@@ -582,8 +608,9 @@
         <h1>CyberDeck Admin</h1>
         <span class="subtitle">Server Control Panel</span>
         <div class="admin-user">
+            <button class="logout-btn" onclick="window.location.href='/'" style="border-color:var(--primary);color:var(--primary);margin-right:8px">💾 Return to Deck</button>
             <span>👤 <span id="adminUsername">admin</span></span>
-            <button class="logout-btn" onclick="adminLogout()">Logout</button>
+            <button class="logout-btn" onclick="adminLogout(true)">Logout</button>
         </div>
     </div>
 
@@ -733,12 +760,35 @@
         }
     }
 
-    function adminLogout() {
-        fetch(`${API}/api/auth/logout`, { method: 'POST', headers: { 'x-auth-token': TOKEN } }).catch(() => { });
+    function adminLogout(forceClear = false) {
+        if (TOKEN) {
+            fetch(`${API}/api/auth/logout`, { method: 'POST', headers: { 'x-auth-token': TOKEN } }).catch(() => { });
+        }
         TOKEN = null;
         localStorage.removeItem('cyberdeck_admin_token');
-        document.getElementById('loginOverlay').classList.remove('hidden');
+        
+        const overlay = document.getElementById('loginOverlay');
+        const isAlreadyVisible = !overlay.classList.contains('hidden');
+        
+        overlay.classList.remove('hidden');
         document.getElementById('appContent').classList.remove('visible');
+        
+        stopAdminTasks();
+
+        // Only clear and focus if forced (manual logout) OR if we are just now showing the login screen
+        if (forceClear || !isAlreadyVisible) {
+            document.getElementById('loginUser').value = '';
+            document.getElementById('loginPass').value = '';
+            document.getElementById('loginError').style.display = 'none';
+            document.getElementById('loginUser').focus();
+        }
+    }
+
+    function stopAdminTasks() {
+        if (window._adminTasks) {
+            window._adminTasks.forEach(clearInterval);
+            window._adminTasks = [];
+        }
     }
 
     async function checkSession() {
@@ -762,14 +812,24 @@
         document.getElementById('loginOverlay').classList.add('hidden');
         document.getElementById('appContent').classList.add('visible');
         loadSystem(); loadServices(); loadConfig(); loadLibraryCounts(); loadUsers();
+        
+        // Start background tasks
+        stopAdminTasks();
+        window._adminTasks = [
+            setInterval(loadSystem, 10000),
+            setInterval(loadServices, 15000)
+        ];
     }
 
     // ── Authenticated fetch ──
     async function adminFetch(url, opts = {}) {
         if (!opts.headers) opts.headers = {};
-        opts.headers['x-auth-token'] = TOKEN;
+        if (TOKEN) opts.headers['x-auth-token'] = TOKEN;
         const res = await fetch(url, opts);
-        if (res.status === 401 || res.status === 403) { adminLogout(); throw new Error('Session expired'); }
+        if (res.status === 401 || res.status === 403) { 
+            adminLogout(false); // Do not force clear on background auth failure
+            throw new Error('Session expired'); 
+        }
         return res;
     }
 
