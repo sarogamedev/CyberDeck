@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="amber">#FFA500</color>
+    <color name="amber_dark">#CC8400</color>
+    <color name="amber_light">#FFB833</color>
+    <color name="amber_faint">#33FFA500</color>
+    <color name="background_dark">#0A0A0A</color>
+    <color name="card_dark">#1A1A1A</color>
+    <color name="surface_dark">#0D0D0D</color>
+    <color name="text_primary">#FFA500</color>
+    <color name="text_secondary">#99FFA500</color>
+    <color name="text_hint">#33FFA500</color>
+    <color name="error_red">#FF4444</color>
+    <color name="status_bar">#000000</color>
+</resources>

@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0A0A0A">
+
+    <!-- Compact Header -->
+    <LinearLayout
+        android:id="@+id/header"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:paddingTop="24dp"
+        android:paddingBottom="12dp"
+        android:paddingHorizontal="24dp"
+        android:background="#111111">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="CYBERDECK"
+            android:textColor="#FFA500"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.2"
+            android:fontFamily="monospace" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="NETWORK SCANNER"
+            android:textColor="#80FFA500"
+            android:textSize="10sp"
+            android:letterSpacing="0.4"
+            android:fontFamily="monospace"
+            android:layout_marginTop="2dp" />
+
+        <!-- Smaller Radar indicator -->
+        <RelativeLayout
+            android:layout_width="60dp"
+            android:layout_height="60dp"
+            android:layout_marginTop="12dp">
+
+            <View
+                android:id="@+id/radarPulse"
+                android:layout_width="60dp"
+                android:layout_height="60dp"
+                android:layout_centerInParent="true"
+                android:background="@drawable/radar_pulse" />
+
+            <View
+                android:layout_width="8dp"
+                android:layout_height="8dp"
+                android:layout_centerInParent="true"
+                android:background="@drawable/dot_amber" />
+        </RelativeLayout>
+
+        <TextView
+            android:id="@+id/scanningText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Searching for CyberDecks..."
+            android:textColor="#FFA500"
+            android:textSize="12sp"
+            android:fontFamily="monospace"
+            android:layout_marginTop="8dp" />
+    </LinearLayout>
+
+    <!-- Node List - Utilizing more space -->
+    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+        android:id="@+id/swipeRefresh"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_below="@id/header">
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/nodeList"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:padding="8dp"
+                android:scrollbars="vertical"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/emptyText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:text="No devices found.\nSwipe down to re-scan."
+                android:textColor="#4DFFA500"
+                android:textSize="13sp"
+                android:textAlignment="center"
+                android:fontFamily="monospace"
+                android:lineSpacingExtra="4dp"
+                android:visibility="visible" />
+        </FrameLayout>
+    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+
+    <!-- Bottom Status Bar (decoration) -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#33FFA500"
+        android:layout_alignParentBottom="true"
+        android:layout_marginBottom="12dp" />
+
+</RelativeLayout>
