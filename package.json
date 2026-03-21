@@ -1,6 +1,6 @@
 {
     "name": "cyberdeck",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "CyberDeck - Resilient OS",
     "author": "Saro",
     "main": "electron-main.js",
@@ -23,7 +23,23 @@
             "icon": "CD Logo No Text.png"
         },
         "files": [
-            "**/*"
+            "**/*",
+            "!**/node_modules/*",
+            "!dist/*",
+            "!server/downloads",
+            "!server/vault_data",
+            "!server/dtn_spool",
+            "!server/users.json",
+            "!server/config.json",
+            "!server/package-lock.json",
+            "!CyberDeckClient",
+            "!CyberDeck-Website",
+            "!.env*",
+            "!server/kiwix-serve.exe",
+            "!**/*.jks",
+            "!**/*.apk",
+            "!**/.DS_Store",
+            "!**/Thumbs.db"
         ],
         "extraResources": [
             "server/kiwix-serve.exe"
