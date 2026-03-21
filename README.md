@@ -126,6 +126,14 @@ For a standalone experience with a dedicated window and taskbar icon:
    npm start
    ```
 
+### Android Native Client
+For a native experience with automatic discovery and one-tap connection:
+
+1. Download the latest `CyberDeck_Client_V1.0.0.apk` from the [Releases](https://github.com/sarogamedev/CyberDeck/releases) page.
+2. Install the APK on your Android device.
+3. Launch the app to automatically scan for nearby CyberDeck nodes on your Wi-Fi network.
+4. Tap any discovered node to connect instantly.
+
 ### Starting the Server
 ```bash
 node server.js
