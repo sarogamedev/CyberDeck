@@ -28,7 +28,7 @@ const PhotosModule = {
             this.photos = data.photos || [];
             this.groups = data.groups || [];
             document.getElementById('photoCount').textContent = `${this.photos.length} photos`;
-            this.render();
+            await this.render();
         } catch (err) {
             document.getElementById('photosContent').innerHTML = `
                 <div class="empty-state">
@@ -39,7 +39,7 @@ const PhotosModule = {
         }
     },
 
-    render() {
+    async render() {
         const el = document.getElementById('photosContent');
         if (this.photos.length === 0) {
             el.innerHTML = `
@@ -50,6 +50,10 @@ const PhotosModule = {
                 </div>`;
             return;
         }
+
+        // Thumbnails are <img> elements, which cannot send an auth header, so
+        // they carry the same short-lived media token the lightbox uses.
+        const tokenParam = await MediaAuth.param();
 
         let html = '';
         this.groups.forEach(group => {

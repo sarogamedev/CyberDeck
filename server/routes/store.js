@@ -312,6 +312,31 @@ function ollamaModelsRoot() {
     // Catalog Manifest — loads from store/catalog.json
     const CATALOG_PATH = path.join(__dirname, '..', 'store', 'catalog.json');
 
+    /**
+     * Resolve a download job from the server's own catalog.
+     *
+     * The job used to be whatever the requester put in the request body, so a
+     * non-admin could queue an entry with an arbitrary `url` under a harmless
+     * `name`. The admin queue only shows the name and type, so approving it
+     * fetched the attacker's URL and wrote it into the downloads directory.
+     * Everything the downloader needs is already in catalog.json, so the id is
+     * the only field we take from the caller.
+     */
+    function catalogItemById(id) {
+        if (typeof id !== 'string' || !id) return null;
+        try {
+            const catalog = JSON.parse(fs.readFileSync(CATALOG_PATH, 'utf-8'));
+            for (const category of catalog.categories || []) {
+                for (const item of category.items || []) {
+                    if (item.id === id) return item;
+                }
+            }
+        } catch (e) {
+            console.error('[Store] Failed to load catalog.json:', e.message);
+        }
+        return null;
+    }
+
     router.get('/catalog', (req, res) => {
         try {
             const catalog = JSON.parse(fs.readFileSync(CATALOG_PATH, 'utf-8'));
@@ -362,8 +387,18 @@ function ollamaModelsRoot() {
     // Download endpoint
     router.post('/download', async (req, res) => {
         if (!req.user || req.user.role !== 'admin') {
-            const reqData = { ...req.body, requestedBy: req.user?.username || 'user', requestedAt: new Date().toISOString() };
-            downloadRequests.set(req.body.id, reqData);
+            // Only the id is recorded. Everything else is read from the
+            // catalog at approval time, so a request cannot smuggle a URL.
+            const item = catalogItemById(req.body.id);
+            if (!item) return res.status(400).json({ error: 'Unknown catalog item' });
+            const reqData = {
+                id: item.id,
+                name: item.name,
+                type: item.type,
+                requestedBy: req.user?.username || 'user',
+                requestedAt: new Date().toISOString()
+            };
+            downloadRequests.set(item.id, reqData);
             saveRequests();
             return res.json({ success: true, downloadId: req.body.id, status: 'requested', message: 'Download requested! Awaiting admin approval.' });
         }
@@ -377,7 +412,11 @@ function ollamaModelsRoot() {
     });
 
     async function processDownloadJob(jobConfig) {
-        const { id, url, dirUrl, pattern, cmd, type, sha256, license, licenseUrl, source, sourceUrl, distributor, name: itemName } = jobConfig;
+        // The catalog is the only source of download parameters; the caller
+        // supplies an id and nothing more is trusted from the request body.
+        const item = catalogItemById(jobConfig && jobConfig.id);
+        if (!item) throw new Error('Unknown catalog item');
+        const { id, url, dirUrl, pattern, cmd, type, sha256, license, licenseUrl, source, sourceUrl, distributor, name: itemName } = item;
 
         // Build sidecar license metadata 
         const licenseMetadata = {

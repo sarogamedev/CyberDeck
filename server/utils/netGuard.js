@@ -15,7 +15,10 @@ const net = require('net');
  * @returns {boolean} True only for RFC 1918 LAN addresses.
  */
 function isPrivateIp(ip) {
-    if (typeof ip !== 'string' || net.isIPv4(ip) !== 4) return false;
+    // net.isIPv4 returns a boolean, not the 4 that net.isIP returns. Comparing
+    // it against 4 was always true, so every address was rejected and all LAN
+    // peer sync failed closed.
+    if (typeof ip !== 'string' || !net.isIPv4(ip)) return false;
 
     const octets = ip.split('.').map(Number);
     const [a, b] = octets;
