@@ -1,69 +1,16 @@
 {
     "name": "cyberdeck",
     "version": "1.0.0",
-    "description": "CyberDeck - Resilient OS",
+    "description": "CyberDeck - offline-first mesh knowledge and communication platform",
     "author": "Saro",
-    "main": "electron-main.js",
     "scripts": {
         "start": "electron .",
         "server": "npm --prefix server start",
-        "build": "electron-builder",
-        "install:all": "npm install && npm --prefix server install",
-        "check": "node --check electron-main.js && node -e \"require('fs').readdirSync('client/js').forEach(f=>require('child_process').execFileSync(process.execPath,['--check','client/js/'+f]))\""
+        "setup": "npm install && npm --prefix server install",
+        "check": "node -e \"const cp=require('child_process');require('fs').readdirSync('client/js').forEach(f=>cp.execFileSync(process.execPath,['--check','client/js/'+f]));cp.execFileSync(process.execPath,['--check','client/sw.js']);cp.execFileSync(process.execPath,['--check','electron-main.js'])\""
     },
-    "build": {
-        "appId": "com.cyberdeck.os",
-        "productName": "CyberDeck",
-        "asar": false,
-        "directories": {
-            "output": "dist"
-        },
-        "win": {
-            "target": [
-                "portable"
-            ],
-            "icon": "CD Logo No Text.png"
-        },
-        "files": [
-            "electron-main.js",
-            "client/**/*",
-            "server/**/*",
-            "!server/node_modules/.cache/**",
-            "!server/downloads/**",
-            "!server/vault_data/**",
-            "!server/dtn_spool/**",
-            "!server/data/**",
-            "!server/users.json",
-            "!server/secrets.json",
-            "!server/tls-cert.json",
-            "!server/test_dtn_net.js",
-            "!**/*.map"
-        ],
-        "extraResources": [
-            {
-                "from": "server/kiwix-serve.exe",
-                "to": "kiwix-serve.exe",
-                "filter": [
-                    "**/*"
-                ]
-            }
-        ]
-    },
-    "dependencies": {
-        "cors": "^2.8.5",
-        "express": "^4.18.2",
-        "express-rate-limit": "^8.7.0",
-        "helmet": "^8.3.0",
-        "multer": "^2.0.0",
-        "multicast-dns": "^7.2.5",
-        "music-metadata": "^7.14.0",
-        "node-fetch": "^2.7.0",
-        "selfsigned": "^5.5.0",
-        "sharp": "^0.33.2",
-        "ws": "^8.16.0"
-    },
+    "main": "electron-main.js",
     "devDependencies": {
-        "electron": "^31.0.0",
-        "electron-builder": "^24.13.3"
+        "electron": "^31.0.0"
     }
 }

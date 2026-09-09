@@ -80,7 +80,8 @@ CyberDeck includes a built-in store for downloading open-source knowledge packs,
 
 ## Quick Start
 
-CyberDeck works on any device running Node.js. Choose your platform:
+CyberDeck runs as a server and you use it from a browser on any device on the
+same network. Install the server on one machine, then open its address anywhere.
 
 ### Android (via Termux) *Ideal portable mesh node*
 ```bash
@@ -107,41 +108,23 @@ cd CyberDeck\server
 powershell -ExecutionPolicy Bypass -File .\setup-windows.ps1
 ```
 
-### Windows Desktop App (Electron)
-For a standalone experience with a dedicated window and taskbar icon:
+### Desktop window (optional)
 
-1. Follow the **Windows (PowerShell)** setup above first.
-2. From the root `CyberDeck` directory, install Electron dependencies (if command fails, run `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` first):
+CyberDeck is used from a browser. If you want it in its own window instead of a
+tab, the Electron shell starts the server and loads the same UI:
 
-   ```powershell
-   npm install
-   ```
-3. Build the portable executable:
-   ```powershell
-   npm run build
-   ```
-   The `.exe` will be generated in the `dist` folder.
-4. To run without building:
-   ```powershell
-   npm start
-   ```
+```bash
+npm run setup   # installs the desktop shell and the server
+npm start       # opens the desktop window
+```
 
-### Android Native Server App (Standalone) *Easiest setup*
-The server now runs natively as a standalone app, no CLI needed.
-
-1. Download the latest `CyberDeck_Server_V1.0.5.apk` from the [Releases](https://github.com/sarogamedev/CyberDeck/releases) page.
-2. Install and launch on your Android device.
-3. Tap **START SERVER**. The app handles the Node.js runtime and asset extraction automatically.
-4. Access the UI directly in the app or via browser on other devices.
-
-### Android Native Client
-For a native experience with automatic discovery and one-tap connection:
-
-1. Download the latest `CyberDeck_Client_V1.0.0.apk` from the [Releases](https://github.com/sarogamedev/CyberDeck/releases) page.
-2. Install the APK on your Android device.
-3. Launch the app to automatically scan for nearby CyberDeck nodes on your Wi-Fi network.
-4. Tap any discovered node to connect instantly.
-
+> **Deprecated distributions.** The packaged Windows `.exe` and the two native
+> Android apps (`CyberDeck_Server`, `CyberDeck_Client`) are no longer built from
+> this branch; their output belongs in Releases, not in the repository. Existing
+> builds stay on the [Releases](https://github.com/sarogamedev/CyberDeck/releases)
+> page and the Android sources live on their own branches, but they receive no
+> fixes, including security fixes. Running the server and opening it in a browser
+> replaces all three. See [DEPRECATED.md](DEPRECATED.md).
 
 ### Starting the Server
 ```bash
@@ -153,7 +136,7 @@ The server displays your LAN IP. Open it on any device on the same network:
 - **Admin Panel**: `http://<ip>:8888/admin`
 - **Secure Mode (HTTPS)**: `https://<ip>:8443` (Required for Mesh/Camera/Microphone features)
 
-*(Default credentials: `admin` / `cyberdeck` - change immediately in Admin Panel).*
+*(First run seeds `admin` / `cyberdeck`. The server blocks every other API call until that password is changed, so change it at first login.)*
 
 ## Admin Panel (`/admin`)
 
@@ -164,7 +147,6 @@ The server displays your LAN IP. Open it on any device on the same network:
 - **Library Scanning**: Force rescan media directories and aggressive directory sweeping
 - **Configuration**: Customize directory paths and offline Ollama model deletions
 - **Metrics**: Real-time performance graphing and background DOM sync for persistent progress tracking
-- **Android Port Management**: Integrated **Asset Extraction** - detects version updates and automatically wipes/re-extracts the backend to prevent corruption.
 
 
 ## Architecture
@@ -184,7 +166,7 @@ Host Device (Termux/PC)                 Client (Any Browser)
 Built with Vanilla JavaScript, HTML, and CSS - no heavy frameworks. Optimized for maximum performance on low-end devices, fully mobile-responsive, and featuring a high-contrast **Tactical Amber** aesthetic.
 
 ## Requirements
-- **Host**: Node.js 18+ (Android via Termux, Linux, Windows, macOS)
+- **Host**: Node.js 20+ (Android via Termux, Linux, Windows, macOS)
 - **Client**: Any modern web browser
 - **Hardware**: Any smartphone from the last 10 years. For **AI Chat**, 6GB+ RAM (8GB recommended)
 - **Network**: Wi-Fi router or Mobile Hotspot (no internet required after initial setup)
@@ -209,8 +191,8 @@ CyberDeck has undergone a comprehensive multi-phase security audit to ensure a r
 - **Encryption**: AES-256-GCM Vault with per-vault random salts and server-side session management.
 - **UI Sanitization**: Comprehensive HTML escaping and removal of legacy dependencies (Bootstrap) for a pure CSS Tactical Amber implementation.
 - **API Security**: Forced same-origin CORS, rate-limited authentication, and WebSocket token verification.
-- **P2P TLS Off-Grid Design**: Peer-to-peer syncing uses self-signed certificates and bypasses strict CA validation (`rejectUnauthorized: false`). Because CyberDeck operates completely offline without access to public Certificate Authorities, this is an intentional design tradeoff. The SSRF filter bounds all peer queries exclusively to local, private LAN IPs, minimizing any MITM exposure to your direct physical network.
-- **Android 15 Compatibility**: Native support for **Edge-to-Edge** rendering and `fitsSystemWindows` padding to prevent layout overlaps on modern mobile OS versions.
+- **Mesh Peer Authentication**: Peer sync endpoints require a shared mesh key, generated on first boot and exchanged out of band. Every peer request carries an HMAC over its timestamp, nonce, method, path and body, so it cannot be forged, replayed, or retargeted at another route.
+- **P2P TLS Off-Grid Design**: Peer syncing uses self-signed certificates and skips CA validation (`rejectUnauthorized: false`), because CyberDeck operates offline with no access to public Certificate Authorities. The mesh key, not the certificate, is what authenticates a peer. Peer addresses are parsed as literal IPv4 and range-checked, so only private LAN addresses are reachable.
 
 
 ## License

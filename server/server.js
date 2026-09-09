@@ -163,7 +163,7 @@ app.use((req, res, next) => {
 });
 
 // Serve client app at root
-// In Electron, we want to ensure the path is resolved correctly relative to the app root
+// Resolved from the server directory so it works regardless of cwd
 const clientPath = path.resolve(__dirname, '..', 'client');
 
 
@@ -708,9 +708,10 @@ pemsPromise.then(pems => {
     // the full API over HTTP, for captive-portal or legacy-Android setups).
     const httpEnabled = config.features?.httpRedirect !== false;
 
-    // The Electron shell loads the app over loopback HTTP. Binding the plain
-    // listener to 127.0.0.1 keeps that working without exposing the API in the
-    // clear to the rest of the network.
+    // Opt-in loopback mode for a local wrapper or kiosk browser that cannot
+    // accept the self-signed certificate. Binding the plain listener to
+    // 127.0.0.1 keeps that working without exposing the API in the clear to
+    // the rest of the network.
     const localHttpOnly = process.env.CYBERDECK_LOCAL_HTTP === '1';
     const plainHttpApi = localHttpOnly || config.features?.plainHttpApi === true;
     const httpBindAddress = localHttpOnly && config.features?.plainHttpApi !== true
