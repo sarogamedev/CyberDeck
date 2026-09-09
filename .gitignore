@@ -1,24 +1,35 @@
-# This .gitignore file should be placed at the root of your project directory
-#
-
-server/downloads
-server/node_modules
-server/vault_data
-server/kiwix-serve.exe
-server/package-lock.json
-server/users.json
-server/config.json
-server/dtn_spool/
-CyberDeck-Website/
-dist/
+# ── Dependencies & build output ──
 node_modules/
-CyberDeckClient/
-CyberDeckServerApp/
+server/node_modules
+dist/
+
+# ── Runtime state (must never be committed) ──
+# server/data held real download records with the author's absolute D:\ paths,
+# and store.js replays that file through processDownloadJob at boot.
+server/data/
+server/downloads
+server/dtn_spool/
+server/vault_data
+server/users.json
+server/secrets.json
+server/tls-cert.json
+server/thumbnails/
+server/kiwix-serve.exe
+
+# server/config.json is a per-machine file; config.example.json is the template.
+server/config.json
+
+# ── Secrets ──
 .env
 .env.*
+*.jks
+
+# ── Related projects, not part of this repo ──
+CyberDeck-Website/
+CyberDeckClient/
+CyberDeckServerApp/
+
+# ── Platform noise ──
 .DS_Store
 Thumbs.db
-
-# Android Client
-*.jks
 *.apk

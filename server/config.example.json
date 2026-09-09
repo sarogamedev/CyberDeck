@@ -1,0 +1,41 @@
+{
+  "port": 8888,
+  "mDnsName": "cyberdeck",
+  "paths": {
+    "music": "Music",
+    "photos": "DCIM",
+    "videos": "Movies",
+    "ebooks": "Books",
+    "root": "."
+  },
+  "services": {
+    "ollama": {
+      "port": 11434,
+      "enabled": true,
+      "defaultModel": "tinyllama"
+    },
+    "kiwix": {
+      "port": 8889,
+      "enabled": true,
+      "zimFile": ""
+    },
+    "maps": {
+      "tilesPath": "./downloads/maps",
+      "enabled": true,
+      "defaultCenter": [
+        20.5937,
+        78.9629
+      ],
+      "defaultZoom": 5
+    }
+  },
+  "thumbnails": {
+    "size": 300,
+    "quality": 80,
+    "cachePath": ".cache/thumbnails"
+  },
+  "features": {
+    "httpRedirect": true,
+    "plainHttpApi": false
+  }
+}

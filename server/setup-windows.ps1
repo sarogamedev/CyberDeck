@@ -71,9 +71,11 @@ if (-not (Get-Command "choco" -ErrorAction SilentlyContinue)) {
 }
 
 # Install dependencies via Chocolatey
-$deps = @("nodejs", "git", "ffmpeg")
-foreach ($dep in $deps) {
-    if (-not (Get-Command $dep -ErrorAction SilentlyContinue)) {
+# Chocolatey package name -> the command it actually provides. Probing for
+# "nodejs" always failed, so Node was reinstalled on every run.
+$deps = @{ "nodejs" = "node"; "git" = "git"; "ffmpeg" = "ffmpeg" }
+foreach ($dep in $deps.Keys) {
+    if (-not (Get-Command $deps[$dep] -ErrorAction SilentlyContinue)) {
         if ($isAdmin) {
             Write-Host "  Installing $dep via chocolatey..."
             choco install $dep -y

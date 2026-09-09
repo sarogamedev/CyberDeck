@@ -44,7 +44,7 @@ const MusicModule = {
                 <div class="empty-state">
                     <div class="empty-icon">🎵</div>
                     <h3>Music library unavailable</h3>
-                    <p>${err.message}</p>
+                    <p>${escapeHtml(err.message)}</p>
                 </div>`;
         }
     },
@@ -131,14 +131,15 @@ const MusicPlayer = {
         });
     },
 
-    play(index, playlist) {
+    async play(index, playlist) {
         if (playlist) this.playlist = playlist;
         if (index < 0 || index >= this.playlist.length) return;
 
         this.currentIndex = index;
         this.currentTrack = this.playlist[index];
 
-        const tokenParam = Auth.token ? `?token=${encodeURIComponent(Auth.token)}` : '';
+        // Media token, not the session token: these URLs end up in logs and history.
+        const tokenParam = await MediaAuth.param();
         this.audio.src = `${API}/api/music/stream/${this.currentTrack.id}${tokenParam}`;
         this.audio.play();
         this.isPlaying = true;
@@ -221,3 +222,6 @@ const MusicPlayer = {
 
 // Init player when DOM loaded
 document.addEventListener('DOMContentLoaded', () => MusicPlayer.init());
+
+// Exposed on window so app.js cleanup and delegated handlers can reach it.
+window.MusicModule = MusicModule;

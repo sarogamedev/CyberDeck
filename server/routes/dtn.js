@@ -3,6 +3,14 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const meshLogger = require('../utils/meshLogger');
+const { resolveWithin, isSafeComponent } = require('../utils/safePath');
+const { isPrivateIp, safePort } = require('../utils/netGuard');
+const { signedHeaders } = require('../utils/meshAuth');
+
+// Packet IDs are content hashes (SHA-256 hex). Anything else is rejected before
+// it can reach the filesystem: an id of "../users" previously wrote outside the
+// spool and could overwrite the user database.
+const PACKET_ID_RE = /^[0-9a-f]{64}$/;
 
 module.exports = function (config) {
     const router = express.Router();
@@ -36,6 +44,13 @@ module.exports = function (config) {
     // Helper: Write packet to spool (with limits)
     function savePacket(packet) {
         try {
+            // The id becomes a filename, so it must be a bare content hash.
+            if (!packet || typeof packet.id !== 'string' ||
+                !PACKET_ID_RE.test(packet.id) || !isSafeComponent(packet.id)) {
+                console.warn('[DTN] Rejecting packet with invalid id');
+                return false;
+            }
+
             // Check packet size
             const packetSize = Buffer.byteLength(JSON.stringify(packet), 'utf8');
             if (packetSize > 2 * 1024 * 1024) { // 2MB limit
@@ -50,7 +65,7 @@ module.exports = function (config) {
                 return false;
             }
 
-            const filePath = path.join(SPOOL_DIR, `${packet.id}.json`);
+            const filePath = resolveWithin(SPOOL_DIR, `${packet.id}.json`);
             if (!fs.existsSync(filePath)) {
                 fs.writeFileSync(filePath, JSON.stringify(packet, null, 2));
                 return true;
@@ -107,17 +122,26 @@ module.exports = function (config) {
     router.post('/send', (req, res) => {
         const { sender, dest, type, payload, ttl_hours = 48 } = req.body;
 
-        if (!payload) return res.status(400).json({ error: 'Missing payload' });
+        if (typeof payload !== 'string' || payload.length === 0) {
+            return res.status(400).json({ error: 'Payload must be a non-empty string' });
+        }
 
         if (Buffer.byteLength(payload, 'utf8') > 2 * 1024 * 1024) {
             return res.status(400).json({ error: 'Payload exceeds 2MB limit' });
+        }
+
+        // An unvalidated ttl_hours produced ttl_expiry: NaN, and `now > NaN` is
+        // always false, so the packet would never be garbage collected.
+        const ttlHours = Number(ttl_hours);
+        if (!Number.isFinite(ttlHours) || ttlHours <= 0 || ttlHours > 24 * 30) {
+            return res.status(400).json({ error: 'ttl_hours must be between 0 and 720' });
         }
 
         const now = Date.now();
         const packet = {
             id: '',
             timestamp: now,
-            ttl_expiry: now + (ttl_hours * 60 * 60 * 1000),
+            ttl_expiry: now + (ttlHours * 60 * 60 * 1000),
             sender: sender || 'anonymous',
             dest: dest || 'ALL',
             type: type || 'text_msg',
@@ -164,9 +188,19 @@ module.exports = function (config) {
         const incomingPackets = req.body.packets || [];
         let accepted = 0;
 
+        if (!Array.isArray(incomingPackets)) {
+            return res.status(400).json({ error: 'packets must be an array' });
+        }
+        if (incomingPackets.length > 500) {
+            return res.status(400).json({ error: 'Too many packets in one batch' });
+        }
+
         for (const p of incomingPackets) {
-            // Basic validation
-            if (!p.id || !p.timestamp || !p.ttl_expiry || !p.payload) continue;
+            if (!p || typeof p !== 'object') continue;
+            // savePacket re-checks the id, but reject obvious junk up front.
+            if (!PACKET_ID_RE.test(String(p.id || ''))) continue;
+            if (typeof p.payload !== 'string' || !p.payload) continue;
+            if (!Number.isFinite(p.timestamp) || !Number.isFinite(p.ttl_expiry)) continue;
 
             // Refuse dead packets immediately
             if (Date.now() > p.ttl_expiry) continue;
@@ -183,14 +217,44 @@ module.exports = function (config) {
         res.json({ accepted });
     });
 
+    // 4b. Authenticated ingest for the WebSocket DTN bridge.
+    //
+    // The client relays packets it receives over the LAN chat socket into its
+    // own spool. That used to POST to /sync/receive, which now requires the
+    // mesh key that a browser does not hold. This is the same logic behind the
+    // normal user session guard instead.
+    router.post('/ingest', (req, res) => {
+        const incomingPackets = req.body.packets || [];
+        if (!Array.isArray(incomingPackets)) {
+            return res.status(400).json({ error: 'packets must be an array' });
+        }
+        if (incomingPackets.length > 500) {
+            return res.status(400).json({ error: 'Too many packets in one batch' });
+        }
+
+        let accepted = 0;
+        for (const p of incomingPackets) {
+            if (!p || typeof p !== 'object') continue;
+            if (!PACKET_ID_RE.test(String(p.id || ''))) continue;
+            if (typeof p.payload !== 'string' || !p.payload) continue;
+            if (!Number.isFinite(p.timestamp) || !Number.isFinite(p.ttl_expiry)) continue;
+            if (Date.now() > p.ttl_expiry) continue;
+            if (savePacket(p)) accepted++;
+        }
+
+        if (accepted > 0) {
+            meshLogger.log(`WS Bridge: Ingested ${accepted} packets`);
+        }
+        res.json({ accepted });
+    });
+
     // 5. Manual Sync Proxy: Bypass browser CORS and HTTPS mixed content limits
     router.post('/manual_sync', async (req, res) => {
         const peerIp = req.body.targetIp;
         if (!peerIp) return res.status(400).json({ error: 'Missing targetIp' });
 
-        // SSRF Protection: Only allow private network IPs
-        const isPrivate = /^10\./.test(peerIp) || /^172\.(1[6-9]|2[0-9]|3[01])\./.test(peerIp) || /^192\.168\./.test(peerIp);
-        if (!isPrivate || peerIp === '127.0.0.1' || peerIp === '::1') {
+        // SSRF Protection: a real IPv4 LAN literal, not a prefix match.
+        if (!isPrivateIp(peerIp)) {
             return res.status(400).json({ error: 'Invalid peer IP: must be a private network address' });
         }
 
@@ -204,17 +268,23 @@ module.exports = function (config) {
             const https = require('https');
             const agent = new https.Agent({ rejectUnauthorized: false }); // Ignore self-signed certs
 
-            const targetUrl = `https://${peerIp}:${config.httpsPort || 8443}/api/dtn/sync/check`;
+            const peerPort = safePort(config.httpsPort, 8443);
+            const checkPath = '/api/dtn/sync/check';
+            const targetUrl = `https://${peerIp}:${peerPort}${checkPath}`;
             console.log(`\x1b[33m[DTN Proxy] Initiating manual HTTPS fetch to: ${targetUrl}\x1b[0m`);
 
             // Tell peer what we KNOW.
+            const checkBody = JSON.stringify({ known_ids: myKnownIds });
             const checkRes = await fetch(targetUrl, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ known_ids: myKnownIds }),
+                headers: signedHeaders('POST', checkPath, checkBody, { 'Content-Type': 'application/json' }),
+                body: checkBody,
                 timeout: 5000,
                 agent: agent
             });
+            if (!checkRes.ok) {
+                throw new Error(`Peer rejected sync check (HTTP ${checkRes.status})`);
+            }
             const data = await checkRes.json();
 
             // Store missing payloads peer sent us
@@ -228,10 +298,12 @@ module.exports = function (config) {
             if (data.my_known_ids) {
                 const peerNeeds = myPackets.filter(myP => !data.my_known_ids.includes(myP.id));
                 if (peerNeeds.length > 0) {
-                    await fetch(`https://${peerIp}:${config.httpsPort || 8443}/api/dtn/sync/receive`, {
+                    const receivePath = '/api/dtn/sync/receive';
+                    const receiveBody = JSON.stringify({ packets: peerNeeds });
+                    await fetch(`https://${peerIp}:${peerPort}${receivePath}`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ packets: peerNeeds }),
+                        headers: signedHeaders('POST', receivePath, receiveBody, { 'Content-Type': 'application/json' }),
+                        body: receiveBody,
                         timeout: 5000,
                         agent: agent
                     });
@@ -248,6 +320,12 @@ module.exports = function (config) {
             res.status(500).json({ success: false, error: e.message });
         }
     });
+
+    // Exposed so the background auto-sync loop in server.js reuses exactly this
+    // logic. It previously kept its own copy that skipped the size and spool
+    // caps and did not validate the packet id at all.
+    router.savePacket = savePacket;
+    router.getSpoolPackets = getSpoolPackets;
 
     return router;
 };

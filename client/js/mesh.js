@@ -136,7 +136,13 @@ const MeshModule = {
     initVisualizer() {
         const canvas = document.getElementById('meshVisualizerCanvas');
         if (!canvas) return;
-        
+
+        // Tear down any previous instance first.
+        if (this.visualizer) {
+            try { this.visualizer.stop(); } catch (e) { }
+            this.visualizer = null;
+        }
+
         // Lazy load visualizer logic to keep initial load fast
         this.visualizer = new MeshVisualizer(canvas);
         this.visualizer.start();
@@ -577,6 +583,18 @@ const MeshModule = {
 
 window.MeshModule = MeshModule;
 
+// Canvas 2D cannot resolve CSS custom properties; assigning 'var(--primary)'
+// to fillStyle is silently ignored and the previous fill is reused. Read the
+// computed value once instead.
+const MESH_PRIMARY = (() => {
+    try {
+        const v = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();
+        return v || '#00d4ff';
+    } catch (e) {
+        return '#00d4ff';
+    }
+})();
+
 class MeshVisualizer {
     constructor(canvas) {
         this.canvas = canvas;
@@ -586,8 +604,11 @@ class MeshVisualizer {
         this.mode = '2d'; // '2d' or '3d'
         this.isRunning = false;
         
+        this._onResize = () => this.resize();
+        this._raf = null;
+
         this.resize();
-        window.addEventListener('resize', () => this.resize());
+        window.addEventListener('resize', this._onResize);
     }
 
     resize() {
@@ -670,9 +691,20 @@ class MeshVisualizer {
         this._pollInterval = setInterval(() => this.pollPeers(), 5000);
     }
 
+    /**
+     * Release everything this instance holds. Previously stop() was never
+     * called from anywhere, and initVisualizer built a new instance on each
+     * module init, so animation loops, poll intervals and resize listeners
+     * accumulated for the life of the page.
+     */
     stop() {
         this.isRunning = false;
-        if (this._pollInterval) clearInterval(this._pollInterval);
+        if (this._pollInterval) { clearInterval(this._pollInterval); this._pollInterval = null; }
+        if (this._raf) { cancelAnimationFrame(this._raf); this._raf = null; }
+        if (this._onResize) {
+            window.removeEventListener('resize', this._onResize);
+            this._onResize = null;
+        }
     }
 
     animate() {
@@ -766,7 +798,7 @@ class MeshVisualizer {
                 
                 this.ctx.beginPath();
                 this.ctx.arc(px, py, 2.5, 0, Math.PI * 2);
-                this.ctx.fillStyle = 'var(--primary)';
+                this.ctx.fillStyle = MESH_PRIMARY;
                 this.ctx.fill();
                 
                 return p.progress < 1;
@@ -780,6 +812,6 @@ class MeshVisualizer {
             info.textContent = `${peerCount} PEERS DISCOVERED | VIEW: ${this.mode.toUpperCase()}`;
         }
 
-        requestAnimationFrame(() => this.animate());
+        this._raf = requestAnimationFrame(() => this.animate());
     }
 }

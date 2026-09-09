@@ -1,6 +1,11 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const { resolveWithin } = require('../utils/safePath');
+
+// Tile coordinates are always non-negative integers. Express URL-decodes route
+// params, so an unchecked :z/:x/:y escaped the tile directory.
+const TILE_COORD_RE = /^\d{1,10}$/;
 
 module.exports = function (config) {
     const router = express.Router();
@@ -40,20 +45,29 @@ module.exports = function (config) {
             return res.status(404).end();
         }
 
+        if (!TILE_COORD_RE.test(z) || !TILE_COORD_RE.test(x) || !TILE_COORD_RE.test(y)) {
+            return res.status(400).end();
+        }
+
         // Resolve to absolute path (relative paths are resolved from server/ dir)
         const absDir = resolveMapPath(tilesDir);
 
-        const possiblePaths = [
-            path.join(absDir, z, x, `${y}.png`),
-            path.join(absDir, z, x, `${y}.jpg`),
-            path.join(absDir, z, x, `${y}.webp`),
-            path.join(absDir, `${z}_${x}_${y}.png`)
-        ];
+        let possiblePaths;
+        try {
+            possiblePaths = [
+                resolveWithin(absDir, z, x, `${y}.png`),
+                resolveWithin(absDir, z, x, `${y}.jpg`),
+                resolveWithin(absDir, z, x, `${y}.webp`),
+                resolveWithin(absDir, `${z}_${x}_${y}.png`)
+            ];
+        } catch (err) {
+            return res.status(400).end();
+        }
 
         for (const tilePath of possiblePaths) {
             if (fs.existsSync(tilePath)) {
                 res.set('Cache-Control', 'public, max-age=604800');
-                return res.sendFile(path.resolve(tilePath));
+                return res.sendFile(tilePath);
             }
         }
 
@@ -97,24 +111,63 @@ module.exports = function (config) {
         });
     }
 
+    const MAX_TILES = 5000;
+
     router.post('/download', async (req, res) => {
-        const { bounds, minZoom, maxZoom } = req.body;
+        if (!req.user || req.user.role !== 'admin') {
+            return res.status(403).json({ error: 'Admin access required' });
+        }
+
+        const { bounds, minZoom, maxZoom } = req.body || {};
         // bounds: { _southWest: { lat, lng }, _northEast: { lat, lng } }
 
-        if (!bounds || minZoom === undefined || maxZoom === undefined) {
-            return res.status(400).json({ error: 'Invalid bounds or zoom levels' });
+        const sw = bounds && bounds._southWest;
+        const ne = bounds && bounds._northEast;
+        const finite = (v) => typeof v === 'number' && Number.isFinite(v);
+        if (!finite(sw?.lat) || !finite(sw?.lng) || !finite(ne?.lat) || !finite(ne?.lng)) {
+            return res.status(400).json({ error: 'Invalid bounds' });
+        }
+        if (Math.abs(sw.lat) > 85 || Math.abs(ne.lat) > 85 ||
+            Math.abs(sw.lng) > 180 || Math.abs(ne.lng) > 180) {
+            return res.status(400).json({ error: 'Bounds out of range' });
+        }
+
+        const zMin = Number(minZoom);
+        const zMax = Number(maxZoom);
+        if (!Number.isInteger(zMin) || !Number.isInteger(zMax) ||
+            zMin < 0 || zMax > 19 || zMin > zMax) {
+            return res.status(400).json({ error: 'Zoom levels must be integers between 0 and 19' });
         }
 
         const dlId = Date.now().toString();
         const destDir = path.resolve(config.services.maps.tilesPath || path.join(__dirname, '..', 'downloads', 'maps'));
 
-        // Calculate required tiles
+        // Count first, then build. The array used to be fully materialised
+        // before the size check, so a world-bounds request at high zoom
+        // exhausted memory before the guard ever ran.
+        let projected = 0;
+        for (let z = zMin; z <= zMax; z++) {
+            const left = lon2tile(sw.lng, z);
+            const right = lon2tile(ne.lng, z);
+            const top = lat2tile(ne.lat, z);
+            const bottom = lat2tile(sw.lat, z);
+            const wide = Math.abs(right - left) + 1;
+            const tall = Math.abs(bottom - top) + 1;
+            projected += wide * tall;
+            if (projected > MAX_TILES) {
+                return res.status(400).json({
+                    error: `Too many tiles selected. Max ${MAX_TILES} per request to respect OSM servers.`
+                });
+            }
+        }
+        if (projected === 0) return res.status(400).json({ error: 'No tiles in selection' });
+
         const tiles = [];
-        for (let z = minZoom; z <= maxZoom; z++) {
-            const left = lon2tile(bounds._southWest.lng, z);
-            const right = lon2tile(bounds._northEast.lng, z);
-            const top = lat2tile(bounds._northEast.lat, z);
-            const bottom = lat2tile(bounds._southWest.lat, z);
+        for (let z = zMin; z <= zMax; z++) {
+            const left = lon2tile(sw.lng, z);
+            const right = lon2tile(ne.lng, z);
+            const top = lat2tile(ne.lat, z);
+            const bottom = lat2tile(sw.lat, z);
 
             for (let x = Math.min(left, right); x <= Math.max(left, right); x++) {
                 for (let y = Math.min(top, bottom); y <= Math.max(top, bottom); y++) {
@@ -122,9 +175,6 @@ module.exports = function (config) {
                 }
             }
         }
-
-        if (tiles.length === 0) return res.status(400).json({ error: 'No tiles in selection' });
-        if (tiles.length > 5000) return res.status(400).json({ error: `Too many tiles selected (${tiles.length}). Max 5,000 per request to respect OSM servers.` });
 
         res.json({ success: true, downloadId: dlId, totalTiles: tiles.length, message: 'Tile download started' });
 

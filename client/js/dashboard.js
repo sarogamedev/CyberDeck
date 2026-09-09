@@ -3,15 +3,13 @@
 // ═══════════════════════════════════════════
 
 const DashboardModule = {
-    stats: {
-        cpu: 0,
-        ram: 0,
-        battery: 0,
-        storage: 0
-    },
     isPerformanceMode: localStorage.getItem('cd_perf_mode') === 'true',
 
     async init() {
+        // The persisted setting only styled the button before; the body class
+        // that actually does anything was applied solely by togglePerformanceMode.
+        document.body.classList.toggle('perf-mode', this.isPerformanceMode);
+
         const el = document.getElementById('mod-dashboard');
         el.innerHTML = `
             <div class="module-header">
@@ -45,9 +43,9 @@ const DashboardModule = {
                 </div>
             </div>`;
 
-        if (this._interval) clearInterval(this._interval);
-        
+        // _interval is never assigned by this module; _meshPoll is the real one.
         this.renderMeshActivity();
+        this.startMeshPolling();
     },
 
     togglePerformanceMode() {
@@ -64,27 +62,6 @@ const DashboardModule = {
             btn.textContent = 'Performance Mode OFF';
             document.body.classList.remove('perf-mode');
         }
-    },
-
-    async updateStats() {
-        try {
-            const res = await authFetch(`${API}/api/power/stats`);
-            const data = await res.json();
-            
-            this.animateStat('cpu', data.cpu_load);
-            this.animateStat('ram', data.ram_pct);
-            this.animateStat('batt', data.battery_level);
-            this.animateStat('storage', data.storage_pct);
-        } catch (e) {
-            console.error('Dash stats failed', e);
-        }
-    },
-
-    animateStat(id, val) {
-        const fill = document.getElementById(`dash-${id}-fill`);
-        const text = document.getElementById(`dash-${id}-text`);
-        if (fill) fill.style.width = (val || 0) + '%';
-        if (text) text.textContent = id === 'storage' ? `${val || 0}% used` : `${val || 0}%`;
     },
 
     async renderMeshActivity(silent = false) {
@@ -111,7 +88,10 @@ const DashboardModule = {
             console.error('Mesh activity fetch failed', e);
         }
 
-        // Real-time polling
+    },
+
+    /** Start the mesh-activity poller. Idempotent. */
+    startMeshPolling() {
         if (this._meshPoll) clearInterval(this._meshPoll);
         this._meshPoll = setInterval(() => {
             const page = document.getElementById('mod-dashboard');
@@ -121,3 +101,6 @@ const DashboardModule = {
         }, 5000);
     }
 };
+
+// Exposed on window so app.js cleanup and delegated handlers can reach it.
+window.DashboardModule = DashboardModule;

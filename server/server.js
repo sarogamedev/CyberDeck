@@ -1,9 +1,15 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { requireAuth, requireAdmin } = require('./utils/auth');
+const { spawn, execFile } = require('child_process');
+const { requireAuth, requireAdmin, requireMediaAuth } = require('./utils/auth');
+const { requireMeshPeer, signedHeaders } = require('./utils/meshAuth');
+const { resolveWithin } = require('./utils/safePath');
+const { isPrivateIp, safePort } = require('./utils/netGuard');
 const meshLogger = require('./utils/meshLogger');
 const rag = require('./utils/rag');
 
@@ -13,8 +19,22 @@ if (dataHome && !fs.existsSync(dataHome)) {
     fs.mkdirSync(dataHome, { recursive: true });
 }
 
-// Load config
+// Load config.
+//
+// config.json is per-machine and no longer tracked in git; config.example.json
+// is the template a fresh clone starts from.
+const examplePath = path.join(__dirname, 'config.example.json');
 const defaultConfigPath = path.join(__dirname, 'config.json');
+
+if (!fs.existsSync(defaultConfigPath)) {
+    if (!fs.existsSync(examplePath)) {
+        console.error('No config.json or config.example.json found in the server directory.');
+        process.exit(1);
+    }
+    fs.copyFileSync(examplePath, defaultConfigPath);
+    console.log('Created server/config.json from config.example.json');
+}
+
 const configPath = dataHome ? path.join(dataHome, 'config.json') : defaultConfigPath;
 
 // Migrate/Initialize config if using a custom data home
@@ -48,8 +68,61 @@ const app = express();
 
 // Middleware
 app.use(cors({ origin: false })); // Same-origin only — client is served by the same server
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+
+// Security headers. The client still carries a large number of inline event
+// handlers, so script-src keeps 'unsafe-inline' for now; tighten it once those
+// are converted to delegated listeners.
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'", 'https://unpkg.com', 'https://cdnjs.cloudflare.com'],
+            styleSrc: ["'self'", "'unsafe-inline'", 'https://unpkg.com', 'https://fonts.googleapis.com'],
+            fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
+            imgSrc: ["'self'", 'data:', 'blob:', 'https://tile.openstreetmap.org'],
+            mediaSrc: ["'self'", 'blob:'],
+            connectSrc: ["'self'", 'ws:', 'wss:'],
+            objectSrc: ["'none'"],
+            baseUri: ["'self'"],
+            frameAncestors: ["'self'"],
+            formAction: ["'self'"],
+            workerSrc: ["'self'"],
+            // helmet defaults script-src-attr to 'none', which blocks every
+            // inline on* handler. The client still has many; tighten this to
+            // 'none' once they are all delegated listeners.
+            scriptSrcAttr: ["'unsafe-inline'"],
+            // Off by default: the app deliberately supports a plaintext HTTP
+            // mode for captive-portal bootstrap, and upgrading subresource
+            // requests there breaks the service worker and every asset.
+            upgradeInsecureRequests: null
+        }
+    },
+    // The app is served over a self-signed cert on a LAN; HSTS would pin
+    // browsers to HTTPS for the whole IP, including other services on it.
+    hsts: false,
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: 'same-site' }
+}));
+
+// Global rate limit. Only /api/auth/login was throttled before, so every other
+// endpoint was free to hammer, including the expensive scan and unlock routes.
+app.use('/api/', rateLimit({
+    windowMs: 60 * 1000,
+    limit: 600,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    // Peer sync is machine-to-machine and bursty; it has its own auth.
+    skip: (req) => req.path.startsWith('/dtn/sync/') || req.path.startsWith('/store/ollama/'),
+    message: { error: 'Too many requests, slow down.' }
+}));
+
+// Keep the exact bytes of the body so mesh peer signatures cover what we
+// actually received, not a re-serialized approximation of it.
+app.use(express.json({
+    limit: '8mb',
+    verify: (req, res, buf) => { req.rawBody = buf; }
+}));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // Captive Portal Interception ("Offline Dead Drop" Mode)
 // When devices connect to the Wi-Fi hotspot, they ping these URLs to check for internet access.
@@ -113,45 +186,49 @@ const dtnRoutes = require('./routes/dtn')(config);
 const llmRoutes = require('./routes/llm')(config, rag);
 
 // Protected API Routes (require login)
-app.use('/api/music', requireAuth, require('./routes/music')(config));
-app.use('/api/photos', requireAuth, require('./routes/photos')(config));
-app.use('/api/videos', requireAuth, require('./routes/videos')(config));
+app.use('/api/music', requireMediaAuth, require('./routes/music')(config));
+app.use('/api/photos', requireMediaAuth, require('./routes/photos')(config));
+app.use('/api/videos', requireMediaAuth, require('./routes/videos')(config));
 app.use('/api/llm', requireAuth, llmRoutes);
 app.use('/api/wiki', requireAuth, require('./routes/wiki')(config));
-app.use('/api/maps', requireAuth, require('./routes/maps')(config));
-app.use('/api/ebooks', requireAuth, require('./routes/ebooks')(config));
+app.use('/api/maps', requireMediaAuth, require('./routes/maps')(config));
+app.use('/api/ebooks', requireMediaAuth, require('./routes/ebooks')(config));
 
 app.use('/api/survival', requireAuth, require('./routes/survival')(config));
 app.use('/api/vault', requireAuth, require('./routes/vault')(config));
 app.use('/api/power', requireAuth, require('./routes/power')(config));
-// Public Store endpoints (no auth) — needed for LAN Content Sync between CyberDeck nodes
+// Peer Store endpoints — used for LAN Content Sync between CyberDeck nodes.
+// These were previously unauthenticated, which let any host on the network list
+// and read the content library. They now require the shared mesh key.
 const storeRouter = require('./routes/store')(config);
-app.get('/api/store/library', (req, res, next) => {
+app.get('/api/store/library', requireMeshPeer, (req, res, next) => {
     req.url = '/library';
     storeRouter(req, res, next);
 });
-app.get('/api/store/serve/:filename', (req, res, next) => {
-    req.url = '/serve/' + req.params.filename;
+app.get('/api/store/serve/:filename', requireMeshPeer, (req, res, next) => {
+    req.url = '/serve/' + encodeURIComponent(req.params.filename);
     storeRouter(req, res, next);
 });
-app.get('/api/store/ollama/manifest/:model', (req, res, next) => {
-    req.url = '/peer/ollama/manifest/' + req.params.model;
+app.get('/api/store/ollama/manifest/:model', requireMeshPeer, (req, res, next) => {
+    req.url = '/peer/ollama/manifest/' + encodeURIComponent(req.params.model);
     storeRouter(req, res, next);
 });
-app.get('/api/store/ollama/blobs/:digest', (req, res, next) => {
-    req.url = '/peer/ollama/blobs/' + req.params.digest;
+app.get('/api/store/ollama/blobs/:digest', requireMeshPeer, (req, res, next) => {
+    req.url = '/peer/ollama/blobs/' + encodeURIComponent(req.params.digest);
     storeRouter(req, res, next);
 });
 
 // Protected Store (requires login)
 app.use('/api/store', requireAuth, storeRouter);
 
-// DTN: P2P sync endpoints (no auth - needed for peer-to-peer epidemic sync)
-app.post('/api/dtn/sync/check', (req, res, next) => {
+// DTN: P2P sync endpoints. Paired peers only — these read out and write into
+// the message spool, so an unauthenticated caller could previously drain every
+// message and inject forged ones.
+app.post('/api/dtn/sync/check', requireMeshPeer, (req, res, next) => {
     req.url = '/sync/check';
     dtnRoutes(req, res, next);
 });
-app.post('/api/dtn/sync/receive', (req, res, next) => {
+app.post('/api/dtn/sync/receive', requireMeshPeer, (req, res, next) => {
     req.url = '/sync/receive';
     dtnRoutes(req, res, next);
 });
@@ -163,11 +240,45 @@ app.get('/api/config', requireAdmin, (req, res) => {
     res.json(config);
 });
 
+// Only these top-level keys may be written through the API. A blind spread of
+// req.body previously let an admin repoint every filesystem path and inject
+// shell metacharacters into the service launcher.
+const WRITABLE_CONFIG_KEYS = new Set([
+    'port', 'httpsPort', 'mDnsName', 'paths', 'services', 'thumbnails', 'features'
+]);
+
 app.put('/api/config', requireAdmin, (req, res) => {
     try {
-        config = { ...config, ...req.body };
+        if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+            return res.status(400).json({ error: 'Config body must be an object' });
+        }
+
+        const incoming = {};
+        for (const [key, value] of Object.entries(req.body)) {
+            if (!WRITABLE_CONFIG_KEYS.has(key)) {
+                return res.status(400).json({ error: `Config key not writable: ${key}` });
+            }
+            incoming[key] = value;
+        }
+
+        if (incoming.port !== undefined && !safePort(incoming.port, null)) {
+            return res.status(400).json({ error: 'Invalid port' });
+        }
+        if (incoming.httpsPort !== undefined && !safePort(incoming.httpsPort, null)) {
+            return res.status(400).json({ error: 'Invalid httpsPort' });
+        }
+        if (incoming.services?.kiwix?.port !== undefined &&
+            !safePort(incoming.services.kiwix.port, null)) {
+            return res.status(400).json({ error: 'Invalid kiwix port' });
+        }
+
+        config = { ...config, ...incoming };
         fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-        res.json({ success: true, config });
+        res.json({
+            success: true,
+            config,
+            note: 'Some settings only take effect after a server restart.'
+        });
     } catch (err) {
         res.status(500).json({ error: 'Internal server error' });
     }
@@ -201,13 +312,16 @@ app.get('/api/system/mesh-activity', requireAuth, (req, res) => {
 // Service management API (admin only)
 app.post('/api/services/:name/start', requireAdmin, (req, res) => {
     const { name } = req.params;
-    const { exec } = require('child_process');
 
     if (name === 'ollama') {
-        exec('ollama serve &', (err) => {
-            if (err) return res.status(500).json({ error: 'Internal server error' });
+        try {
+            const child = spawn('ollama', ['serve'], { detached: true, stdio: 'ignore' });
+            child.on('error', (err) => console.error('[Ollama] Failed to start:', err.message));
+            child.unref();
             res.json({ success: true, message: 'Ollama started' });
-        });
+        } catch (err) {
+            res.status(500).json({ error: 'Internal server error' });
+        }
     } else if (name === 'kiwix') {
         const dlDir = path.join(__dirname, 'downloads');
         let zimFiles = [];
@@ -236,47 +350,63 @@ app.post('/api/services/:name/start', requireAdmin, (req, res) => {
 
         const isWin = process.platform === 'win32';
         const localExePath = path.join(__dirname, 'kiwix-serve.exe');
-        let kiwixCmd = 'kiwix-serve';
-        
-        // Build the arguments string
-        const port = config.services.kiwix.port || 8889;
-        const argsStr = zimFiles.map(z => `"${z}"`).join(' ');
 
-        // Check if kiwix-serve is available locally or globally
-        let cmdCheck = isWin ? `where kiwix-serve` : `which kiwix-serve`;
+        // Port and ZIM paths both come from a config file the admin API writes,
+        // so they are never interpolated into a shell string. spawn() with an
+        // argument array removes the injection surface entirely.
+        const port = safePort(config.services?.kiwix?.port, 8889);
+        const kiwixArgs = [`--port=${port}`, ...zimFiles];
+
+        const launch = (command) => {
+            try {
+                const child = spawn(command, kiwixArgs, {
+                    cwd: __dirname,
+                    detached: true,
+                    stdio: 'ignore'
+                });
+                child.on('error', (err) => {
+                    console.error('[Kiwix] Failed to start:', err.message);
+                });
+                child.unref();
+                return true;
+            } catch (err) {
+                console.error('[Kiwix] Failed to spawn:', err.message);
+                return false;
+            }
+        };
+
         if (isWin && fs.existsSync(localExePath)) {
-            // Local fallback for Windows
-            exec(`start /b kiwix-serve.exe --port=${port} ${argsStr}`, { cwd: __dirname }, (err) => {
-                if (err) return res.status(500).json({ error: 'Internal server error' });
-                return res.json({ success: true, message: `Kiwix started on port ${port} with ${zimFiles.length} dataset(s)` });
-            });
-        } else {
-            exec(cmdCheck, (checkErr) => {
-                if (checkErr && !isWin) {
-                    // Try to install kiwix-tools on Termux directly
-                    exec('pkg install -y kiwix-tools 2>&1', { timeout: 120000 }, (installErr) => {
-                        if (installErr) {
-                            return res.status(400).json({
-                                error: 'kiwix-serve not found. Install it: pkg install kiwix-tools or flatpak/choco depending on your OS'
-                            });
-                        }
-                        // Installed successfully, try to run
-                        exec(`kiwix-serve --port=${port} ${argsStr} &`, (err) => {
-                            if (err) return res.status(500).json({ error: 'Internal server error' });
-                            return res.json({ success: true, message: `Kiwix installed and started with ${zimFiles.length} dataset(s)` });
-                        });
-                    });
-                } else if (!checkErr) {
-                    const runCmd = isWin ? `start /b kiwix-serve --port=${port} ${argsStr}` : `kiwix-serve --port=${port} ${argsStr} &`;
-                    exec(runCmd, { cwd: __dirname }, (err) => {
-                        if (err) return res.status(500).json({ error: 'Internal server error' });
-                        return res.json({ success: true, message: `Kiwix started correctly on port ${port} with ${zimFiles.length} dataset(s)` });
-                    });
-                } else {
-                    res.status(400).json({ error: 'kiwix-serve not found in PATH' });
-                }
-            });
+            if (!launch(localExePath)) {
+                return res.status(500).json({ error: 'Internal server error' });
+            }
+            return res.json({ success: true, message: `Kiwix started on port ${port} with ${zimFiles.length} dataset(s)` });
         }
+
+        execFile(isWin ? 'where' : 'which', ['kiwix-serve'], (checkErr) => {
+            if (!checkErr) {
+                if (!launch('kiwix-serve')) {
+                    return res.status(500).json({ error: 'Internal server error' });
+                }
+                return res.json({ success: true, message: `Kiwix started correctly on port ${port} with ${zimFiles.length} dataset(s)` });
+            }
+
+            if (isWin) {
+                return res.status(400).json({ error: 'kiwix-serve not found in PATH' });
+            }
+
+            // Try to install kiwix-tools on Termux directly
+            execFile('pkg', ['install', '-y', 'kiwix-tools'], { timeout: 120000 }, (installErr) => {
+                if (installErr) {
+                    return res.status(400).json({
+                        error: 'kiwix-serve not found. Install it: pkg install kiwix-tools or flatpak/choco depending on your OS'
+                    });
+                }
+                if (!launch('kiwix-serve')) {
+                    return res.status(500).json({ error: 'Internal server error' });
+                }
+                return res.json({ success: true, message: `Kiwix installed and started with ${zimFiles.length} dataset(s)` });
+            });
+        });
     } else {
         res.status(400).json({ error: `Unknown service: ${name}` });
     }
@@ -284,31 +414,38 @@ app.post('/api/services/:name/start', requireAdmin, (req, res) => {
 
 app.post('/api/services/:name/stop', requireAdmin, (req, res) => {
     const { name } = req.params;
-    const { exec } = require('child_process');
     const isWin = process.platform === 'win32';
 
     const commands = {
-        ollama: isWin ? 'taskkill /IM ollama.exe /F /T' : 'pkill -f "ollama serve"',
-        kiwix: isWin ? 'taskkill /IM kiwix-serve.exe /F /T' : 'pkill -f "kiwix-serve"'
+        ollama: isWin ? ['taskkill', ['/IM', 'ollama.exe', '/F', '/T']] : ['pkill', ['-f', 'ollama serve']],
+        kiwix: isWin ? ['taskkill', ['/IM', 'kiwix-serve.exe', '/F', '/T']] : ['pkill', ['-f', 'kiwix-serve']]
     };
 
     if (!commands[name]) {
         return res.status(400).json({ error: `Unknown service: ${name}` });
     }
 
-    exec(commands[name], (err) => {
+    const [stopCmd, stopArgs] = commands[name];
+    execFile(stopCmd, stopArgs, (err) => {
         // taskkill/pkill return error if no process found, that's okay
         res.json({ success: true, message: `${name} stopped` });
     });
 });
 
 app.get('/api/services/status', requireAdmin, async (req, res) => {
-    const { exec } = require('child_process');
     const isWin = process.platform === 'win32';
 
+    // Argument arrays rather than a shell pipeline, so the process names are
+    // never re-parsed by a shell.
     const checkProcess = (processName) => new Promise((resolve) => {
-        const cmd = isWin ? `tasklist | findstr /i "${processName}"` : `pgrep -f "${processName}"`;
-        exec(cmd, (err) => resolve(!err)); // No error means process found
+        if (isWin) {
+            execFile('tasklist', ['/FO', 'CSV', '/NH'], (err, stdout) => {
+                if (err) return resolve(false);
+                resolve(stdout.toLowerCase().includes(processName.toLowerCase()));
+            });
+        } else {
+            execFile('pgrep', ['-f', processName], (err) => resolve(!err));
+        }
     });
 
     const [ollamaRunning, kiwixRunning] = await Promise.all([
@@ -398,29 +535,73 @@ const selfsigned = require('selfsigned');
 
 const httpServer = http.createServer(app);
 
-// Generate self-signed cert on the fly for local HTTPS
-console.log('Generating dynamic self-signed certificate for WebRTC support...');
-const attrs = [{ name: 'commonName', value: 'cyberdeck.local' }];
-const pemsPromise = selfsigned.generate(attrs, {
-    days: 365,
-    keySize: 2048,
-    extensions: [{
-        name: 'basicConstraints',
-        cA: true
-    }, {
-        name: 'subjectAltName',
-        altNames: [{
-            type: 2, // DNS
-            value: 'localhost'
+// TLS certificate.
+//
+// This was regenerated on every boot, so the fingerprint changed constantly and
+// users could never meaningfully trust it once. We now persist it and reuse it
+// until it expires or the LAN IP it covers changes.
+const CERT_DIR = process.env.CYBERDECK_DATA_HOME || __dirname;
+const CERT_FILE = path.join(CERT_DIR, 'tls-cert.json');
+
+function generateCert(lanIp) {
+    const attrs = [{ name: 'commonName', value: `${mDnsName}.local` }];
+    return selfsigned.generate(attrs, {
+        days: 365,
+        keySize: 2048,
+        extensions: [{
+            name: 'basicConstraints',
+            cA: true
         }, {
-            type: 7, // IP
-            ip: '127.0.0.1'
-        }, {
-            type: 7, // IP
-            ip: getLanIP()
+            name: 'subjectAltName',
+            altNames: [
+                { type: 2, value: 'localhost' },
+                { type: 2, value: `${mDnsName}.local` },
+                { type: 7, ip: '127.0.0.1' },
+                { type: 7, ip: lanIp }
+            ]
         }]
-    }]
-});
+    });
+}
+
+async function loadOrCreateCert() {
+    const lanIp = getLanIP();
+    try {
+        if (fs.existsSync(CERT_FILE)) {
+            const stored = JSON.parse(fs.readFileSync(CERT_FILE, 'utf-8'));
+            const stillValid = stored.expiresAt && Date.now() < stored.expiresAt - 24 * 60 * 60 * 1000;
+            if (stillValid && stored.lanIp === lanIp && stored.pems?.private && stored.pems?.cert) {
+                console.log('Reusing stored TLS certificate.');
+                return stored.pems;
+            }
+            console.log('Stored TLS certificate is stale; regenerating.');
+        }
+    } catch (err) {
+        console.error('Could not read stored certificate, regenerating:', err.message);
+    }
+
+    console.log('Generating self-signed certificate for WebRTC support...');
+    // selfsigned.generate returns a promise; awaiting it is what makes the
+    // persisted file contain an actual key pair.
+    const pems = await generateCert(lanIp);
+    if (!pems || !pems.private || !pems.cert) {
+        throw new Error('Certificate generation returned no key material');
+    }
+    try {
+        const tmp = `${CERT_FILE}.tmp`;
+        fs.writeFileSync(tmp, JSON.stringify({
+            lanIp,
+            createdAt: Date.now(),
+            expiresAt: Date.now() + 365 * 24 * 60 * 60 * 1000,
+            pems
+        }), { mode: 0o600 });
+        fs.renameSync(tmp, CERT_FILE);
+    } catch (err) {
+        console.error('Could not persist certificate (will regenerate next boot):', err.message);
+    }
+    return pems;
+}
+
+const pemsPromise = loadOrCreateCert();
 
 // Start mDNS Broadcaster
 try {
@@ -510,57 +691,63 @@ try {
 } catch (e) { }
 
 // Endpoints
-app.get('/api/peers', requireAuth, (req, res) => {
-    const now = Date.now();
-    const peers = [];
-    for (const [ip, lastSeen] of dtnPeers.entries()) {
-        if (now - lastSeen < 30000) {
-            peers.push({ ip, lastSeen, agoMs: now - lastSeen });
-        } else if (now - lastSeen > 300000) {
-            dtnPeers.delete(ip); // Auto-purge entries older than 5 minutes
-        }
-    }
-    let selfIp = getLanIP();
-    const hostHeader = req.get('host') || '';
-    const hostOnly = hostHeader.split(':')[0];
-    const isIp = /^[:0-9.]+$/.test(hostOnly);
-    if (isIp && hostOnly !== '127.0.0.1' && hostOnly !== '0.0.0.0') {
-        selfIp = hostOnly;
-    } else if (selfIp === '127.0.0.1' || selfIp === '::1' || !selfIp) {
-        const socketIp = req.socket.localAddress;
-        if (socketIp && socketIp !== '::1' && socketIp !== '127.0.0.1') {
-            selfIp = socketIp.includes('::ffff:') ? socketIp.split('::ffff:')[1] : socketIp;
-        }
-    }
-    res.json({ peers, self: selfIp });
-});
 
 pemsPromise.then(pems => {
     const httpsServer = https.createServer({
         key: pems.private,
         cert: pems.cert,
-        minVersion: 'TLSv1.2',
-        rejectUnauthorized: false
+        minVersion: 'TLSv1.2'
     }, app);
 
-    // Setup WebSocket chat
+    const PORT = safePort(config.port, 8888);
+    const HTTPS_PORT = safePort(config.httpsPort, 8443);
+
+    // The plaintext listener carried logins, session tokens and every API
+    // response in the clear. It is now off unless explicitly enabled, and when
+    // enabled it only redirects to HTTPS (set features.plainHttpApi to serve
+    // the full API over HTTP, for captive-portal or legacy-Android setups).
+    const httpEnabled = config.features?.httpRedirect !== false;
+
+    // The Electron shell loads the app over loopback HTTP. Binding the plain
+    // listener to 127.0.0.1 keeps that working without exposing the API in the
+    // clear to the rest of the network.
+    const localHttpOnly = process.env.CYBERDECK_LOCAL_HTTP === '1';
+    const plainHttpApi = localHttpOnly || config.features?.plainHttpApi === true;
+    const httpBindAddress = localHttpOnly && config.features?.plainHttpApi !== true
+        ? '127.0.0.1'
+        : '0.0.0.0';
+
+    // Setup WebSocket chat. One server instance so HTTP and HTTPS clients share
+    // the same client list and history; previously each got its own.
     const setupChat = require('./chat');
-    setupChat(httpServer);
     setupChat(httpsServer);
+    if (plainHttpApi) setupChat(httpServer);
 
-    const PORT = config.port || 8888;
-    const HTTPS_PORT = config.httpsPort || 8443;
-
-    httpServer.listen(PORT, '0.0.0.0', () => {
-        // Do nothing here, log below
-    });
+    if (httpEnabled) {
+        if (!plainHttpApi) {
+            httpServer.removeAllListeners('request');
+            httpServer.on('request', (req, res) => {
+                const host = (req.headers.host || '').split(':')[0];
+                res.writeHead(301, { Location: `https://${host}:${HTTPS_PORT}${req.url}` });
+                res.end();
+            });
+        }
+        httpServer.listen(PORT, httpBindAddress, () => {
+            // Do nothing here, log below
+        });
+    }
 
     httpsServer.listen(HTTPS_PORT, '0.0.0.0', () => {
         console.log(`\x1b[36m  \x1b[1mCyberDeck HTTPS:\x1b[0m  https://localhost:${HTTPS_PORT}\x1b[0m`);
     });
 
     // DTN Epidemic Sync Loop
+    // A slow or hung peer used to let sync runs overlap and stack up.
+    let syncInFlight = false;
     setInterval(async () => {
+        if (syncInFlight) return;
+        syncInFlight = true;
+        try {
         const now = Date.now();
         for (const [peerIp, lastSeen] of dtnPeers.entries()) {
             if (now - lastSeen > 120000) dtnPeers.delete(peerIp);
@@ -582,20 +769,6 @@ pemsPromise.then(pems => {
             }
         } catch (e) { }
 
-        // Helper to save a packet to spool
-        const savePacket = (packet) => {
-            try {
-                const filePath = path.join(dtnSpool, `${packet.id}.json`);
-                if (!fs.existsSync(filePath)) {
-                    fs.writeFileSync(filePath, JSON.stringify(packet, null, 2));
-                    return true;
-                }
-            } catch (e) {
-                console.error(`[DTN] Error saving packet ${packet.id}:`, e.message);
-            }
-            return false;
-        };
-
         for (const peerIp of dtnPeers.keys()) {
             try {
                 // Ignore self-signed certs for internal P2P connections
@@ -603,20 +776,23 @@ pemsPromise.then(pems => {
                 const agent = new https.Agent({ rejectUnauthorized: false });
                 const fetch = require('node-fetch').default || require('node-fetch');
 
-                const checkRes = await fetch(`https://${peerIp}:${HTTPS_PORT}/api/dtn/sync/check`, {
+                const checkPath = '/api/dtn/sync/check';
+                const checkBody = JSON.stringify({ known_ids: myKnownIds });
+                const checkRes = await fetch(`https://${peerIp}:${HTTPS_PORT}${checkPath}`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ known_ids: myKnownIds }),
+                    headers: signedHeaders('POST', checkPath, checkBody, { 'Content-Type': 'application/json' }),
+                    body: checkBody,
                     timeout: 5000,
                     agent: agent
                 });
+                if (!checkRes.ok) continue; // Unpaired or unreachable peer
                 const data = await checkRes.json();
 
                 // Store anything they sent us
                 if (data.payloads_for_you && data.payloads_for_you.length > 0) {
                     let r = 0;
                     for (const p of data.payloads_for_you) {
-                        if (savePacket(p)) r++;
+                        if (dtnRoutes.savePacket(p)) r++;
                     }
                     if (r > 0) meshLogger.log(`Auto-Sync: Received ${r} packets from ${peerIp}`);
                 }
@@ -625,10 +801,12 @@ pemsPromise.then(pems => {
                 if (data.my_known_ids) {
                     const peerNeeds = myPackets.filter(myP => !data.my_known_ids.includes(myP.id));
                     if (peerNeeds.length > 0) {
-                        await fetch(`https://${peerIp}:${HTTPS_PORT}/api/dtn/sync/receive`, {
+                        const receivePath = '/api/dtn/sync/receive';
+                        const receiveBody = JSON.stringify({ packets: peerNeeds });
+                        await fetch(`https://${peerIp}:${HTTPS_PORT}${receivePath}`, {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ packets: peerNeeds }),
+                            headers: signedHeaders('POST', receivePath, receiveBody, { 'Content-Type': 'application/json' }),
+                            body: receiveBody,
                             timeout: 5000,
                             agent: agent
                         });
@@ -636,8 +814,11 @@ pemsPromise.then(pems => {
                     }
                 }
             } catch (err) {
-                // console.error('[DTN] Auto-Sync fetch error:', err.message); // Silenced to prevent spam if peer is offline
+                // Silenced to prevent spam if a peer is offline
             }
+        }
+        } finally {
+            syncInFlight = false;
         }
     }, 15000);
 

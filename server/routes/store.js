@@ -1,29 +1,39 @@
 const express = require('express');
 const { exec, execFile } = require('child_process');
 const path = require('path');
+const { parseRange, sendUnsatisfiable } = require('../utils/httpRange');
 const fs = require('fs');
 const crypto = require('crypto');
 const os = require('os');
 const https = require('https');
 const http = require('http');
 const fetch = require('node-fetch').default || require('node-fetch');
+const { resolveWithin, isSafeComponent } = require('../utils/safePath');
+const { isPrivateIp, safePort } = require('../utils/netGuard');
+const { signedHeaders } = require('../utils/meshAuth');
+
+// Ollama blob digests are always "sha256:<64 hex>". They are used as filenames,
+// so anything else is rejected before it reaches the filesystem.
+const OLLAMA_DIGEST_RE = /^sha256:[0-9a-f]{64}$/;
+
+/** Map a validated digest to its on-disk blob filename. */
+function digestToFilename(digest) {
+    if (typeof digest !== 'string' || !OLLAMA_DIGEST_RE.test(digest)) {
+        throw new Error('Invalid blob digest');
+    }
+    return digest.replace(':', '-');
+}
+
+/** Resolve the Ollama model root for this platform. */
+function ollamaModelsRoot() {
+    return process.env.OLLAMA_MODELS || (process.platform === 'win32'
+        ? path.join(process.env.USERPROFILE || os.homedir(), '.ollama', 'models')
+        : path.join(os.homedir(), '.ollama', 'models'));
+}
 
 // Strict validation for Ollama model names (e.g. tinyllama:latest, phi3:mini, gemma2:2b)
 const SAFE_MODEL_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/;
 
-// SSRF Protection: Validate that an IP is a private/LAN address (RFC 1918)
-function isPrivateIp(ip) {
-    if (!ip) return false;
-    // IPv4 private ranges
-    if (/^10\./.test(ip)) return true;
-    if (/^172\.(1[6-9]|2[0-9]|3[01])\./.test(ip)) return true;
-    if (/^192\.168\./.test(ip)) return true;
-    // Link-local
-    if (/^169\.254\./.test(ip)) return false; // Block link-local (cloud metadata)
-    // Localhost
-    if (ip === '127.0.0.1' || ip === '::1') return false; // Block localhost SSRF
-    return false;
-}
 // Helper: HTTP(S) GET that follows redirects (up to 5)
 function httpsGet(url, maxRedirects = 5) {
     return new Promise((resolve, reject) => {
@@ -47,7 +57,7 @@ function httpsGet(url, maxRedirects = 5) {
 }
 
 // Download a file with progress tracking and pause/resume support
-function downloadFile(url, dest, dlId, activeDownloads, activeProcesses, maxRedirects = 5, skipFinalStatus = false, parentDlId = null) {
+function downloadFile(url, dest, dlId, activeDownloads, activeProcesses, maxRedirects = 5, skipFinalStatus = false, parentDlId = null, meshSign = false) {
     return new Promise((resolve, reject) => {
         const fileName = path.basename(dest);
         const proto = url.startsWith('https') ? https : http;
@@ -65,14 +75,23 @@ function downloadFile(url, dest, dlId, activeDownloads, activeProcesses, maxRedi
         if (startByte > 0) {
             options.headers['Range'] = `bytes=${startByte}-`;
         }
+        // Peer transfers must be signed with the mesh key; public internet
+        // downloads from the catalog must not leak it.
+        if (meshSign) {
+            const signPath = new URL(url).pathname;
+            Object.assign(options.headers, signedHeaders('GET', signPath));
+        }
         let fileStream = null;
+        // Set when the transfer is torn down deliberately (pause/cancel), so the
+        // error handlers below do not delete the partial file that resume needs.
+        let pausedByUser = false;
 
         const req = proto.get(url, options, (res) => {
             if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
                 res.resume();
                 if (maxRedirects <= 0) return reject(new Error('Too many redirects'));
                 const next = res.headers.location.startsWith('http') ? res.headers.location : new URL(res.headers.location, url).href;
-                return downloadFile(next, dest, dlId, activeDownloads, activeProcesses, maxRedirects - 1, skipFinalStatus, parentDlId).then(resolve).catch(reject);
+                return downloadFile(next, dest, dlId, activeDownloads, activeProcesses, maxRedirects - 1, skipFinalStatus, parentDlId, meshSign).then(resolve).catch(reject);
             }
 
             if (res.statusCode === 416) {
@@ -104,7 +123,10 @@ function downloadFile(url, dest, dlId, activeDownloads, activeProcesses, maxRedi
                 
                 const dl = activeDownloads.get(dlId) || {};
                 if (dl.status === 'paused' || dl.status === 'cancelled') {
+                    pausedByUser = dl.status === 'paused';
+                    res.unpipe(fileStream);
                     req.destroy();
+                    if (fileStream) fileStream.end();
                     return;
                 }
 
@@ -182,8 +204,17 @@ function downloadFile(url, dest, dlId, activeDownloads, activeProcesses, maxRedi
                 }
             });
 
-            fileStream.on('error', (err) => { try { fs.unlinkSync(dest); } catch (e) { } reject(err); });
+            fileStream.on('error', (err) => {
+                if (!pausedByUser) { try { fs.unlinkSync(dest); } catch (e) { } }
+                reject(err);
+            });
         }).on('error', (err) => {
+            if (pausedByUser) {
+                // Keep the bytes on disk; resume picks up from this offset.
+                activeProcesses.delete(dlId);
+                if (fileStream) fileStream.close();
+                return resolve();
+            }
             if (fileStream) fileStream.close(() => {
                 try { fs.unlinkSync(dest); } catch (e) { }
             });
@@ -205,6 +236,28 @@ module.exports = function (config) {
     const activeProcesses = new Map();
 
     const fetch = require('node-fetch').default || require('node-fetch');
+const { resolveWithin, isSafeComponent } = require('../utils/safePath');
+const { isPrivateIp, safePort } = require('../utils/netGuard');
+const { signedHeaders } = require('../utils/meshAuth');
+
+// Ollama blob digests are always "sha256:<64 hex>". They are used as filenames,
+// so anything else is rejected before it reaches the filesystem.
+const OLLAMA_DIGEST_RE = /^sha256:[0-9a-f]{64}$/;
+
+/** Map a validated digest to its on-disk blob filename. */
+function digestToFilename(digest) {
+    if (typeof digest !== 'string' || !OLLAMA_DIGEST_RE.test(digest)) {
+        throw new Error('Invalid blob digest');
+    }
+    return digest.replace(':', '-');
+}
+
+/** Resolve the Ollama model root for this platform. */
+function ollamaModelsRoot() {
+    return process.env.OLLAMA_MODELS || (process.platform === 'win32'
+        ? path.join(process.env.USERPROFILE || os.homedir(), '.ollama', 'models')
+        : path.join(os.homedir(), '.ollama', 'models'));
+}
     const agent = new https.Agent({ rejectUnauthorized: false });
 
     // Persistent Queues
@@ -397,7 +450,15 @@ module.exports = function (config) {
                 const dest = path.join(DOWNLOADS_DIR, fileName);
                 activeDownloads.set(dlId, { ...jobConfig, status: 'downloading', progress: 0, output: `Downloading: ${fileName}`, type: 'zim', dest, expectedSha256: sha256 || null, licenseMetadata });
 
-                downloadFile(downloadUrl, dest, dlId, activeDownloads, activeProcesses);
+                downloadFile(downloadUrl, dest, dlId, activeDownloads, activeProcesses)
+                    .catch(err => {
+                        console.error(`[Store] Download failed for ${dlId}:`, err.message);
+                        activeDownloads.set(dlId, {
+                            ...activeDownloads.get(dlId),
+                            status: 'failed', progress: 0, output: `Download failed: ${err.message}`
+                        });
+                        activeProcesses.delete(dlId);
+                    });
 
             } catch (err) {
                 activeDownloads.set(dlId, { status: 'failed', progress: 0, output: err.message });
@@ -455,18 +516,22 @@ module.exports = function (config) {
     });
 
     // Pause an active download
-    router.post('/progress/:id/pause', (req, res) => {
+    const pauseHandler = (req, res) => {
         const dlId = req.params.id;
         const proc = activeProcesses.get(dlId);
         const dl = activeDownloads.get(dlId);
 
+        // Mark paused first: downloadFile reads this status to decide whether
+        // the teardown is intentional and the partial file should be kept.
+        if (dl) activeDownloads.set(dlId, { ...dl, status: 'paused' });
         if (proc && proc.type === 'request' && proc.req) {
             proc.req.destroy();
             activeProcesses.set(dlId, { ...proc, req: null });
         }
-        if (dl) activeDownloads.set(dlId, { ...dl, status: 'paused' });
         res.json({ success: true, status: 'paused' });
-    });
+    };
+
+    router.post('/progress/:id/pause', pauseHandler);
 
     // Resume a paused download
     router.post('/progress/:id/resume', (req, res) => {
@@ -487,10 +552,19 @@ module.exports = function (config) {
             'medref': 'mdwiki_en'
         };
         const prefix = zimPatterns[dlId];
+
+        // `f.includes(dlId)` used to match here, so cancelling id "." or "z"
+        // deleted essentially every downloaded file. Only sweep files that
+        // belong to a known catalog prefix or match the id exactly.
+        if (!prefix && !isSafeComponent(dlId)) return;
+
         try {
             const files = fs.readdirSync(DOWNLOADS_DIR);
             files.forEach(f => {
-                if ((prefix && f.startsWith(prefix)) || f === dlId || f.includes(dlId)) {
+                const matches = prefix
+                    ? f.startsWith(prefix)
+                    : (f === dlId || f.startsWith(`${dlId}.`));
+                if (matches) {
                     const fullPath = path.join(DOWNLOADS_DIR, f);
                     if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
                         if (fullPath.endsWith('.zim')) {
@@ -536,28 +610,30 @@ module.exports = function (config) {
                     try { fs.unlinkSync(dl.dest); } catch(e){}
                 }
             } else if (dl.type === 'ollama' && dl.modelName) {
-                try { require('child_process').exec(`echo rm ${dl.modelName} && ollama rm ${dl.modelName}`, ()=>{}); } catch(e){}
+                if (SAFE_MODEL_NAME.test(dl.modelName)) {
+                    try { execFile('ollama', ['rm', dl.modelName], () => {}); } catch (e) {}
+                }
             }
         }
         finishCancel();
     }
 
     // Cancel an active download
-    router.post('/progress/:id/cancel', (req, res) => handleCancel(req.params.id, res));
-    router.post('/cancel/:id', (req, res) => handleCancel(req.params.id, res));
-
-    router.post('/pause/:id', (req, res) => {
-        const dlId = req.params.id;
-        const proc = activeProcesses.get(dlId);
-        const dl = activeDownloads.get(dlId);
-
-        if (proc && proc.type === 'request' && proc.req) {
-            proc.req.destroy();
-            activeProcesses.set(dlId, { ...proc, req: null });
+    // Cancelling deletes files from disk, so it is an admin action. It was
+    // previously available to any logged-in user.
+    const adminOnly = (req, res, next) => {
+        if (!req.user || req.user.role !== 'admin') {
+            return res.status(403).json({ error: 'Unauthorized' });
         }
-        if (dl) activeDownloads.set(dlId, { ...dl, status: 'paused' });
-        res.json({ success: true, status: 'paused' });
-    });
+        next();
+    };
+
+    router.post('/progress/:id/cancel', adminOnly, (req, res) => handleCancel(req.params.id, res));
+    router.post('/cancel/:id', adminOnly, (req, res) => handleCancel(req.params.id, res));
+
+    // Alias of /progress/:id/pause. These were copy-pasted and had already
+    // started to diverge; one implementation now backs both paths.
+    router.post('/pause/:id', pauseHandler);
 
     router.post('/resume/:id', (req, res) => {
         res.json({ success: true, status: 'resuming' });
@@ -742,12 +818,7 @@ module.exports = function (config) {
     });
 
     // Check download progress
-    router.get('/progress/:id', (req, res) => {
-        const dl = activeDownloads.get(req.params.id);
-        if (!dl) return res.json({ status: 'not_found' });
-        res.json(dl);
-    });
-
+    
     function getDirSize(dirPath) {
         let size = 0;
         try {
@@ -1044,11 +1115,12 @@ module.exports = function (config) {
         const stat = fs.statSync(filePath);
         const range = req.headers.range;
 
-        if (range) {
-            // Resumable download support
-            const parts = range.replace(/bytes=/, '').split('-');
-            const start = parseInt(parts[0], 10);
-            const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
+        // Resumable download support
+        const parsed = parseRange(range, stat.size, stat.size);
+        if (parsed === 'unsatisfiable') return sendUnsatisfiable(res, stat.size);
+
+        if (parsed) {
+            const { start, end } = parsed;
             const chunkSize = (end - start) + 1;
 
             res.writeHead(206, {
@@ -1081,11 +1153,16 @@ module.exports = function (config) {
         }
 
         try {
-            const port = config.httpsPort || 8443;
-            const url = `https://${peerIp}:${port}/api/store/library`;
+            const port = safePort(config.httpsPort, 8443);
+            const libraryPath = '/api/store/library';
+            const url = `https://${peerIp}:${port}${libraryPath}`;
             console.log(`[LAN Sync] Fetching library from peer: ${url}`);
 
-            const response = await fetch(url, { timeout: 15000, agent });
+            const response = await fetch(url, {
+                timeout: 15000,
+                agent,
+                headers: signedHeaders('GET', libraryPath)
+            });
             const data = await response.json();
             res.json({ success: true, peer: peerIp, ...data });
         } catch (e) {
@@ -1096,12 +1173,17 @@ module.exports = function (config) {
     // Serve Ollama blobs for P2P sync
     router.get('/peer/ollama/blobs/:digest', async (req, res) => {
         const { digest } = req.params;
-        const ollamaServeBase = process.env.OLLAMA_MODELS || (process.platform === 'win32'
-            ? path.join(process.env.USERPROFILE, '.ollama', 'models')
-            : path.join(os.homedir(), '.ollama', 'models'));
-
-        const safeDigest = digest.replace(':', '-');
-        const blobPath = path.join(ollamaServeBase, 'blobs', safeDigest);
+        let blobPath;
+        try {
+            // Previously the raw digest was joined into the path, so
+            // "../../../../etc/passwd" read arbitrary files off the host.
+            blobPath = resolveWithin(
+                path.join(ollamaModelsRoot(), 'blobs'),
+                digestToFilename(digest)
+            );
+        } catch (err) {
+            return res.status(400).send('Invalid blob digest');
+        }
 
         if (fs.existsSync(blobPath)) {
             res.sendFile(blobPath);
@@ -1113,16 +1195,29 @@ module.exports = function (config) {
     // Serve Ollama manifests for P2P sync
     router.get('/peer/ollama/manifest/:model', async (req, res) => {
         const { model } = req.params;
+
+        // SAFE_MODEL_NAME already existed but was never applied here, so repo
+        // and tag went into the path unchecked.
+        if (!SAFE_MODEL_NAME.test(model)) {
+            return res.status(400).send('Invalid model name');
+        }
         const [repo, tag] = model.includes(':') ? model.split(':') : [model, 'latest'];
-        const ollamaBase = process.env.OLLAMA_MODELS || (process.platform === 'win32'
-            ? path.join(process.env.USERPROFILE, '.ollama', 'models')
-            : path.join(os.homedir(), '.ollama', 'models'));
+        if (!isSafeComponent(repo) || !isSafeComponent(tag)) {
+            return res.status(400).send('Invalid model name');
+        }
+
+        const manifestRoot = path.join(ollamaModelsRoot(), 'manifests', 'registry.ollama.ai');
 
         // Check both library/repo and just repo (Ollama sometimes nests differently)
-        const pathsToTry = [
-            path.join(ollamaBase, 'manifests', 'registry.ollama.ai', 'library', repo, tag),
-            path.join(ollamaBase, 'manifests', 'registry.ollama.ai', repo, tag)
-        ];
+        let pathsToTry;
+        try {
+            pathsToTry = [
+                resolveWithin(manifestRoot, 'library', repo, tag),
+                resolveWithin(manifestRoot, repo, tag)
+            ];
+        } catch (err) {
+            return res.status(400).send('Invalid model name');
+        }
 
         let manifestPath = pathsToTry[0];
         for (const p of pathsToTry) {
@@ -1164,7 +1259,7 @@ module.exports = function (config) {
         activeDownloads.set(dlId, { status: 'downloading', progress: 0, output: `Pulling from nearby CyberDeck (${peerIp})...`, type: type || 'zim', dest });
 
         try {
-            const port = config.httpsPort || 8443;
+            const port = safePort(config.httpsPort, 8443);
             const url = `https://${peerIp}:${port}/api/store/serve/${encodeURIComponent(filename)}`;
             console.log(`[LAN Sync] Pulling ${filename} from peer: ${url}`);
 
@@ -1183,11 +1278,23 @@ module.exports = function (config) {
 
                         // Correct Internal API path (matches routes above)
                         const baseUrl = `https://${peerIp}:${port}/api/store`;
-                        const manifestRes = await fetch(`${baseUrl}/ollama/manifest/${encodeURIComponent(filename)}`, { agent });
+                        const manifestPath = `/api/store/ollama/manifest/${encodeURIComponent(filename)}`;
+                        const manifestRes = await fetch(`https://${peerIp}:${port}${manifestPath}`, {
+                            agent,
+                            headers: signedHeaders('GET', manifestPath)
+                        });
                         if (!manifestRes.ok) throw new Error(`Peer does not have manifest for ${filename} (Status: ${manifestRes.status})`);
 
                         const manifest = await manifestRes.json();
+                        if (!manifest || !manifest.config || !Array.isArray(manifest.layers)) {
+                            throw new Error('Peer returned a malformed manifest');
+                        }
                         const blobs = [manifest.config, ...manifest.layers];
+                        for (const b of blobs) {
+                            if (!b || !OLLAMA_DIGEST_RE.test(String(b.digest || ''))) {
+                                throw new Error('Peer manifest contains an invalid blob digest');
+                            }
+                        }
                         const totalModelSize = blobs.reduce((sum, b) => sum + (b.size || 0), 0);
                         let completedBlobs = 0;
 
@@ -1216,8 +1323,10 @@ module.exports = function (config) {
                         }
 
                         for (const blob of blobs) {
-                            const digest = blob.digest;
-                            const targetPath = path.join(blobsDir, digest.replace(':', '-'));
+                            const digest = blob && blob.digest;
+                            // The manifest comes from a peer. Without this check
+                            // a hostile peer chose an arbitrary write path.
+                            const targetPath = resolveWithin(blobsDir, digestToFilename(digest));
 
                             console.log(`[Ollama Sync] Checking blob: ${digest}`);
                             if (!fs.existsSync(targetPath)) {
@@ -1225,7 +1334,7 @@ module.exports = function (config) {
                                 const blobUrl = `${baseUrl}/ollama/blobs/${encodeURIComponent(digest)}`;
 
                                 // pass dlId as parentDlId so downloadFile updates the main progress
-                                await downloadFile(blobUrl, targetPath, `${dlId}-${digest}`, activeDownloads, activeProcesses, 5, true, dlId);
+                                await downloadFile(blobUrl, targetPath, `${dlId}-${digest}`, activeDownloads, activeProcesses, 5, true, dlId, true);
                             } else {
                                 console.log(`[Ollama Sync] Blob already exists: ${digest}`);
                                 // Mark as already downloaded in the parent tracker
@@ -1268,8 +1377,17 @@ module.exports = function (config) {
                 })();
 
             } else {
-                // Download file using existing HTTP stream infrastructure
-                downloadFile(url, dest, dlId, activeDownloads, activeProcesses);
+                // Download file using existing HTTP stream infrastructure.
+                // meshSign: this is a peer transfer, so it must carry the key.
+                downloadFile(url, dest, dlId, activeDownloads, activeProcesses, 5, false, null, true)
+                    .catch(err => {
+                        console.error(`[LAN Sync] Pull failed for ${filename}:`, err.message);
+                        activeDownloads.set(dlId, {
+                            ...activeDownloads.get(dlId),
+                            status: 'failed', progress: 0, output: `Pull failed: ${err.message}`
+                        });
+                        activeProcesses.delete(dlId);
+                    });
             }
 
             // Write license sidecar if provided

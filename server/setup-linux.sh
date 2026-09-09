@@ -75,10 +75,10 @@ fi
 
 step "Installing core dependencies (Node.js, git, ffmpeg)..."
 if [[ "$OS" == "ubuntu" || "$OS" == "debian" ]]; then
-    curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
     apt-get install -y nodejs git ffmpeg curl
 elif [[ "$OS" == "fedora" || "$OS" == "centos" ]]; then
-    curl -fsSL https://rpm.nodesource.com/setup_18.x | bash -
+    curl -fsSL https://rpm.nodesource.com/setup_22.x | bash -
     dnf install -y nodejs git ffmpeg curl
 elif [[ "$OS" == "arch" ]]; then
     pacman -S --noconfirm nodejs npm git ffmpeg curl

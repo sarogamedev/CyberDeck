@@ -3,6 +3,7 @@
 // ═══════════════════════════════════════════
 
 const StoreModule = {
+    _pollTimers: {},
     catalog: [],
     itemConfigs: {},  // Store configs by ID — avoids inline JSON in onclick
     currentTab: 'catalog',
@@ -21,6 +22,18 @@ const StoreModule = {
                 </div>
             </div>
             <div id="storeContent"><div class="loading-spinner"></div></div>`;
+
+        // Catalog item ids come from catalog.json.
+        delegate(document.getElementById('mod-store'), '[data-store-action]', (el) => {
+            const id = el.dataset.itemId;
+            switch (el.dataset.storeAction) {
+                case 'downloadItem': StoreModule.downloadItem(id); break;
+                case 'pauseDownload': StoreModule.pauseDownload(id); break;
+                case 'resumeDownload': StoreModule.resumeDownload(id); break;
+                case 'cancelDownload': StoreModule.cancelDownload(id); break;
+            }
+        });
+
 
         await this.loadCatalog();
     },
@@ -73,7 +86,7 @@ const StoreModule = {
 
         this.catalog.forEach(cat => {
             html += `<div class="store-category">
-                <h3>${cat.name}</h3>
+                <h3>${escapeHtml(cat.name)}</h3>
                 <div class="store-items">`;
 
             cat.items.forEach(item => {
@@ -112,15 +125,15 @@ const StoreModule = {
                             </div>
                             <div class="store-btn-group">
                                 <button class="btn btn-primary" id="btn-${item.id}"
-                                    onclick="StoreModule.downloadItem('${item.id}')">
-                                    ${item.type === 'manual' ? 'INFO' : (window.currentUser?.role === 'admin' ? 'DOWNLOAD' : 'REQUEST')}
+                                    data-store-action="downloadItem" data-item-id="${escapeHtml(item.id)}">
+                                    ${item.type === 'manual' ? 'INFO' : (Auth.user?.role === 'admin' ? 'DOWNLOAD' : 'REQUEST')}
                                 </button>
                                 <button class="btn" id="revoke-${item.id}" style="display:none;"
-                                    onclick="StoreModule.pauseDownload('${item.id}')">PAUSE</button>
+                                    data-store-action="pauseDownload" data-item-id="${escapeHtml(item.id)}">PAUSE</button>
                                 <button class="btn btn-success-tac" id="resume-${item.id}" style="display:none;"
-                                    onclick="StoreModule.resumeDownload('${item.id}')">RESUME</button>
+                                    data-store-action="resumeDownload" data-item-id="${escapeHtml(item.id)}">RESUME</button>
                                 <button class="btn btn-delete" id="cancel-${item.id}" style="display:none;"
-                                    onclick="StoreModule.cancelDownload('${item.id}')">CANCEL</button>
+                                    data-store-action="cancelDownload" data-item-id="${escapeHtml(item.id)}">CANCEL</button>
                             </div>
                         </div>
                     </div>`;
@@ -181,7 +194,7 @@ const StoreModule = {
                 html += `
                     <tr>
                         <td style="font-weight: bold;">${icon} ${escapeHtml(f.name)}</td>
-                        <td><span class="store-type-tag">${f.type.toUpperCase()}</span></td>
+                        <td><span class="store-type-tag">${escapeHtml(String(f.type || "").toUpperCase())}</span></td>
                         <td style="font-family: 'JetBrains Mono', monospace;">${sizeStr}</td>
                         <td style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-dim); word-break: break-all;">
                             ${escapeHtml(f.relativePath || f.name)}
@@ -257,8 +270,8 @@ const StoreModule = {
             return;
         }
 
-        btn.disabled = true;
-        btn.textContent = '⏳ Starting...';
+        if (btn) btn.disabled = true;
+        if (btn) btn.textContent = '⏳ Starting...';
         prog.style.display = 'flex';
 
         try {
@@ -270,8 +283,8 @@ const StoreModule = {
             const data = await res.json();
 
             if (data.error) {
-                btn.disabled = false;
-                btn.textContent = '⬇ Retry';
+                if (btn) btn.disabled = false;
+                if (btn) btn.textContent = '⬇ Retry';
                 prog.style.display = 'none';
                 alert('Download error: ' + data.error);
                 return;
@@ -280,8 +293,8 @@ const StoreModule = {
             // Poll progress
             this.pollProgress(id);
         } catch (err) {
-            btn.disabled = false;
-            btn.textContent = '⬇ Retry';
+            if (btn) btn.disabled = false;
+            if (btn) btn.textContent = '⬇ Retry';
             prog.style.display = 'none';
             alert('Download failed: ' + err.message);
         }
@@ -328,8 +341,24 @@ const StoreModule = {
         }
     },
 
+    /** Stop every progress poll chain. Called on logout. */
+    stopPolling() {
+        for (const id of Object.keys(this._pollTimers)) clearTimeout(this._pollTimers[id]);
+        this._pollTimers = {};
+    },
+
     async pollProgress(id) {
         const mdItemType = this.itemConfigs[id]?.type;
+
+        // One tracked timer per download id. resumeDownload and
+        // checkExistingDownloads both call this, and each call used to start a
+        // fresh untracked setTimeout chain that nothing could ever stop.
+        if (this._pollTimers[id]) {
+            clearTimeout(this._pollTimers[id]);
+            delete this._pollTimers[id];
+        }
+        const schedule = (ms) => { this._pollTimers[id] = setTimeout(check, ms); };
+        const stop = () => { delete this._pollTimers[id]; };
 
         const check = async () => {
             const fill = document.getElementById(`fill-${id}`);
@@ -349,81 +378,84 @@ const StoreModule = {
                     if (text) text.textContent = 'Finding...';
                     if (btn) btn.textContent = '🔍 Finding...';
                     if (cancelBtn) cancelBtn.style.display = 'inline-block';
-                    setTimeout(check, 2000);
+                    schedule(2000);
                 } else if (data.status === 'downloading') {
                     if (prog) prog.style.display = 'flex';
-                    fill.style.width = data.progress + '%';
-                    fill.style.background = 'var(--primary)';
-                    text.textContent = data.progress + '%';
-                    btn.textContent = data.progress + '%';
+                    if (fill) fill.style.width = data.progress + '%';
+                    if (fill) fill.style.background = 'var(--primary)';
+                    if (text) text.textContent = data.progress + '%';
+                    if (btn) btn.textContent = data.progress + '%';
                     if (cancelBtn) cancelBtn.style.display = 'block';
                     if (pauseBtn && mdItemType === 'zim') pauseBtn.style.display = 'block';
                     if (resumeBtn) resumeBtn.style.display = 'none';
-                    setTimeout(check, 2000);
+                    schedule(2000);
                 } else if (data.status === 'verifying') {
                     if (prog) prog.style.display = 'flex';
-                    fill.style.width = '100%';
-                    fill.style.background = 'var(--cyan)';
-                    text.textContent = 'Verifying...';
-                    btn.textContent = 'Verifying...';
+                    if (fill) fill.style.width = '100%';
+                    if (fill) fill.style.background = 'var(--cyan)';
+                    if (text) text.textContent = 'Verifying...';
+                    if (btn) btn.textContent = 'Verifying...';
                     if (cancelBtn) cancelBtn.style.display = 'none';
                     if (pauseBtn) pauseBtn.style.display = 'none';
-                    setTimeout(check, 2000);
+                    schedule(2000);
                 } else if (data.status === 'paused') {
+                    stop();
                     if (prog) prog.style.display = 'flex';
-                    fill.style.background = 'var(--surface2)';
-                    fill.style.width = data.progress + '%';
-                    text.textContent = data.progress + '% (Paused)';
-                    btn.textContent = '⏸ Paused';
+                    if (fill) fill.style.background = 'var(--surface2)';
+                    if (fill) fill.style.width = data.progress + '%';
+                    if (text) text.textContent = data.progress + '% (Paused)';
+                    if (btn) btn.textContent = '⏸ Paused';
                     if (pauseBtn) pauseBtn.style.display = 'none';
                     if (resumeBtn) resumeBtn.style.display = 'inline-block';
                     if (cancelBtn) cancelBtn.style.display = 'inline-block';
                     // We don't loop here. Resume will restart polling.
                 } else if (data.status === 'requested') {
                     if (prog) prog.style.display = 'flex';
-                    fill.style.background = 'var(--surface2)';
-                    fill.style.width = '100%';
-                    text.textContent = 'Pending Approval...';
+                    if (fill) fill.style.background = 'var(--surface2)';
+                    if (fill) fill.style.width = '100%';
+                    if (text) text.textContent = 'Pending Approval...';
                     if (btn) { btn.textContent = 'REQUESTED'; btn.disabled = true; }
                     if (pauseBtn) pauseBtn.style.display = 'none';
                     if (resumeBtn) resumeBtn.style.display = 'none';
                     if (cancelBtn) cancelBtn.style.display = 'inline-block';
-                    setTimeout(check, 5000);
+                    schedule(5000);
                 } else if (data.status === 'complete') {
+                    stop();
                     if (prog) prog.style.display = 'none';
                     if (fill) { fill.style.width = '100%'; fill.style.background = 'var(--border)'; }
-                    text.textContent = 'Complete';
-                    btn.textContent = 'DONE';
-                    btn.disabled = true;
+                    if (text) text.textContent = 'Complete';
+                    if (btn) btn.textContent = 'DONE';
+                    if (btn) btn.disabled = true;
                     if (cancelBtn) cancelBtn.style.display = 'none';
                     if (pauseBtn) pauseBtn.style.display = 'none';
                     if (resumeBtn) resumeBtn.style.display = 'none';
                     // Force refresh all buttons to sync "DONE" state
                     this.checkExistingDownloads();
                 } else if (data.status === 'failed') {
-                    fill.style.width = '100%';
-                    fill.style.background = 'var(--red)';
-                    text.textContent = 'Failed';
-                    btn.textContent = '⬇ Retry';
-                    btn.disabled = false;
+                    stop();
+                    if (fill) fill.style.width = '100%';
+                    if (fill) fill.style.background = 'var(--red)';
+                    if (text) text.textContent = 'Failed';
+                    if (btn) btn.textContent = '⬇ Retry';
+                    if (btn) btn.disabled = false;
                     if (cancelBtn) cancelBtn.style.display = 'none';
                     if (pauseBtn) pauseBtn.style.display = 'none';
                     if (resumeBtn) resumeBtn.style.display = 'none';
                     if (data.output) alert('Download failed:\n' + data.output);
                 } else if (data.status === 'corrupted') {
-                    fill.style.width = '100%';
-                    fill.style.background = 'var(--red)';
-                    text.textContent = '✗ Integrity Failure';
-                    btn.textContent = '⬇ Retry';
-                    btn.disabled = false;
+                    if (fill) fill.style.width = '100%';
+                    if (fill) fill.style.background = 'var(--red)';
+                    if (text) text.textContent = '✗ Integrity Failure';
+                    if (btn) btn.textContent = '⬇ Retry';
+                    if (btn) btn.disabled = false;
                     if (cancelBtn) cancelBtn.style.display = 'none';
                     if (pauseBtn) pauseBtn.style.display = 'none';
                     if (resumeBtn) resumeBtn.style.display = 'none';
                     if (data.output) alert('Integrity Check Failed:\n' + data.output);
                 } else if (data.status === 'idle') {
                     if (btn) {
-                        btn.textContent = window.currentUser?.role === 'admin' ? 'DOWNLOAD' : 'REQUEST';
-                        btn.disabled = false;
+                        if (btn) btn.textContent = Auth.user?.role === 'admin' ? 'DOWNLOAD' : 'REQUEST';
+                        if (btn) btn.disabled = false;
                     }
                     if (prog) prog.style.display = 'none';
                     if (fill) fill.style.width = '0%';
@@ -431,12 +463,15 @@ const StoreModule = {
                     if (cancelBtn) cancelBtn.style.display = 'none';
                     return; // Stop polling because request was probably rejected or download never started
                 } else {
-                    setTimeout(check, 3000);
+                    schedule(3000);
                 }
             } catch {
-                setTimeout(check, 5000);
+                schedule(5000);
             }
         };
         check();
     }
 };
+
+// Exposed on window so app.js cleanup and delegated handlers can reach it.
+window.StoreModule = StoreModule;

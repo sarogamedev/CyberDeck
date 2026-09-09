@@ -1,9 +1,13 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { isWithin } = require('./safePath');
 
-// Ephemeral secret for signing file paths. Resets on restart.
-const FILE_ID_SECRET = crypto.randomBytes(32);
+const { getSecret } = require('./secretStore');
+
+// Persisted, so file IDs issued before a restart keep resolving. This was
+// previously regenerated per process, which made every existing ID fail.
+const FILE_ID_SECRET = getSecret('fileIdSecret', 32);
 
 function encodeFileId(filePath) {
     const payload = Buffer.from(filePath).toString('base64url');
@@ -14,7 +18,7 @@ function encodeFileId(filePath) {
 /**
  * Recursively scan a directory for files matching given extensions
  */
-function scanDirectory(dirPath, extensions = [], recursive = true) {
+function scanDirectory(dirPath, extensions = [], recursive = true, rootPath = dirPath) {
     const results = [];
     if (!fs.existsSync(dirPath)) return results;
 
@@ -23,7 +27,11 @@ function scanDirectory(dirPath, extensions = [], recursive = true) {
         for (const entry of entries) {
             const fullPath = path.join(dirPath, entry.name);
             if (entry.isDirectory() && recursive) {
-                results.push(...scanDirectory(fullPath, extensions, recursive));
+                // rootPath is threaded through so relativePath stays relative to
+                // the scan root. It was previously computed against the current
+                // recursion directory, so every nested file looked top-level and
+                // folder grouping collapsed into one bucket.
+                results.push(...scanDirectory(fullPath, extensions, recursive, rootPath));
             } else if (entry.isFile()) {
                 const ext = path.extname(entry.name).toLowerCase().slice(1);
                 if (extensions.length === 0 || extensions.includes(ext)) {
@@ -31,7 +39,7 @@ function scanDirectory(dirPath, extensions = [], recursive = true) {
                     results.push({
                         id: encodeFileId(fullPath),
                         name: entry.name,
-                        relativePath: path.relative(dirPath, fullPath),
+                        relativePath: path.relative(rootPath, fullPath),
                         ext: ext,
                         size: stat.size,
                         modified: stat.mtime,
@@ -62,19 +70,17 @@ function decodeFileId(id, rootDir) {
     const decoded = Buffer.from(payload, 'base64url').toString('utf-8');
     const expectedSig = crypto.createHmac('sha256', FILE_ID_SECRET).update(decoded).digest('base64url');
 
-    if (signature !== expectedSig) {
+    // Constant-time compare: `!==` leaked how much of the HMAC matched.
+    const sigBuf = Buffer.from(signature, 'base64url');
+    const expBuf = Buffer.from(expectedSig, 'base64url');
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
         throw new Error('Access denied: File ID signature mismatch');
     }
 
+    // isWithin requires a real separator boundary, so root "/data/Music" no
+    // longer also matches "/data/Music-private".
     const resolvedPath = path.resolve(decoded);
-    const normalizedRoot = path.normalize(path.resolve(rootDir));
-
-    // Case-insensitive comparison on Windows
-    const compare = process.platform === 'win32'
-        ? (a, b) => a.toLowerCase().startsWith(b.toLowerCase())
-        : (a, b) => a.startsWith(b);
-
-    if (!compare(resolvedPath, normalizedRoot)) {
+    if (!isWithin(resolvedPath, rootDir)) {
         throw new Error('Access denied: Path outside root directory');
     }
     return resolvedPath;

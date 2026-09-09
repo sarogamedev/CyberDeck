@@ -22,6 +22,11 @@ const VideosModule = {
             </div>
             <div id="videosContent"><div class="loading-spinner"></div></div>
         `;
+
+        delegate(document.getElementById('mod-videos'), '[data-video-id]', (el) => {
+            VideosModule.playVideo(el.dataset.videoId, el.dataset.videoName);
+        });
+
         await this.load();
     },
 
@@ -39,7 +44,7 @@ const VideosModule = {
                 <div class="empty-state">
                     <div class="empty-icon">🎬</div>
                     <h3>Video library unavailable</h3>
-                    <p>${err.message}</p>
+                    <p>${escapeHtml(err.message)}</p>
                 </div>`;
         }
     },
@@ -68,15 +73,15 @@ const VideosModule = {
         this.filteredVideos.forEach(video => {
             const name = video.name.replace(/\.[^/.]+$/, '');
             html += `
-                <div class="video-card" onclick="VideosModule.playVideo('${video.id}', '${name.replace(/'/g, "\\'")}')">
+                <div class="video-card" data-video-id="${escapeHtml(video.id)}" data-video-name="${escapeHtml(name)}">
                     <div class="video-thumb">
                         🎬
                         <div class="play-overlay"><span>▶</span></div>
                     </div>
                     <div class="video-info">
-                        <div class="video-name">${name}</div>
+                        <div class="video-name">${escapeHtml(name)}</div>
                         <div class="video-meta">
-                            <span class="tag tag-electric">${video.ext.toUpperCase()}</span>
+                            <span class="tag tag-electric">${escapeHtml(String(video.ext || "").toUpperCase())}</span>
                             · ${formatBytes(video.size)}
                         </div>
                     </div>
@@ -86,11 +91,12 @@ const VideosModule = {
         el.innerHTML = html;
     },
 
-    playVideo(id, name) {
+    async playVideo(id, name) {
         const overlay = document.createElement('div');
         overlay.className = 'video-player-overlay';
         overlay.id = 'videoOverlay';
-        const tokenParam = Auth.token ? `?token=${encodeURIComponent(Auth.token)}` : '';
+        // Media token, not the session token: these URLs end up in logs and history.
+        const tokenParam = await MediaAuth.param();
         overlay.innerHTML = `
             <button class="close-btn" onclick="VideosModule.closePlayer()">✕</button>
             <video controls autoplay>
@@ -117,3 +123,6 @@ const VideosModule = {
         document.removeEventListener('keydown', this._keyHandler);
     }
 };
+
+// Exposed on window so app.js cleanup and delegated handlers can reach it.
+window.VideosModule = VideosModule;

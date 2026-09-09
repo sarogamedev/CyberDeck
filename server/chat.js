@@ -1,11 +1,32 @@
 const WebSocket = require('ws');
 const { getSession } = require('./utils/auth');
 
+// Shared across every listener this process attaches chat to. setupChat used to
+// be called once for HTTP and once for HTTPS, giving each its own client map
+// and history, so the two sets of users could not see each other.
+const clients = new Map();
+const messageHistory = [];
+
 module.exports = function setupChat(server) {
-    const wss = new WebSocket.Server({ server, path: '/ws/chat' });
-    const clients = new Map();
-    const messageHistory = []; // Keep last 100 messages
-    const MAX_HISTORY = 100;
+    const wss = new WebSocket.Server({
+        server,
+        path: '/ws/chat',
+        maxPayload: 256 * 1024,
+        // Reject cross-site WebSocket connections: browsers do not apply the
+        // same-origin policy to WebSocket upgrades.
+        verifyClient: (info, done) => {
+            const origin = info.origin;
+            if (!origin) return done(true); // Non-browser client (native app).
+            try {
+                const host = new URL(origin).host;
+                const expected = info.req.headers.host;
+                return done(host === expected);
+            } catch (err) {
+                return done(false);
+            }
+        }
+    });
+    const MAX_HISTORY = 100; // messageHistory is module-level and shared
 
     wss.on('connection', (ws) => {
         let username = 'Anonymous';
@@ -25,6 +46,11 @@ module.exports = function setupChat(server) {
                 // All messages except 'join' require authentication
                 if (!authenticated && msg.type !== 'join') {
                     ws.send(JSON.stringify({ type: 'error', text: 'Not authenticated. Send a join message with a valid token.' }));
+                    return;
+                }
+
+                if (typeof msg.text === 'string' && msg.text.length > 4000) {
+                    ws.send(JSON.stringify({ type: 'error', text: 'Message too long' }));
                     return;
                 }
 
@@ -131,11 +157,14 @@ module.exports = function setupChat(server) {
 
     function broadcast(msg) {
         const data = JSON.stringify(msg);
-        wss.clients.forEach(client => {
+        // Iterate the authenticated client map, not wss.clients. Broadcasting
+        // to every socket meant an unauthenticated peer received all chat,
+        // emergency alerts and WebRTC signalling during its grace window.
+        for (const client of clients.keys()) {
             if (client.readyState === WebSocket.OPEN) {
                 client.send(data);
             }
-        });
+        }
     }
 
     function broadcastUserList() {

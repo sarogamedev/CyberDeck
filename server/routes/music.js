@@ -1,5 +1,6 @@
 const express = require('express');
 const path = require('path');
+const { parseRange, sendUnsatisfiable } = require('../utils/httpRange');
 const fs = require('fs');
 const { scanDirectory, decodeFileId, getMimeType } = require('../utils/scanner');
 
@@ -97,10 +98,11 @@ module.exports = function (config) {
 
             // Support range requests for seeking
             const range = req.headers.range;
-            if (range) {
-                const parts = range.replace(/bytes=/, '').split('-');
-                const start = parseInt(parts[0], 10);
-                const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
+            const parsed = parseRange(range, stat.size);
+            if (parsed === 'unsatisfiable') return sendUnsatisfiable(res, stat.size);
+
+            if (parsed) {
+                const { start, end } = parsed;
                 const chunkSize = end - start + 1;
 
                 res.writeHead(206, {

@@ -74,33 +74,7 @@ module.exports = function (config) {
     });
 
     // List available datasets based on local ZIM files
-    router.get('/datasets', (req, res) => {
-        const path = require('path');
-        const fs = require('fs');
-        const dlDir = path.join(__dirname, '..', 'downloads');
-        let datasets = [];
-        try {
-            if (fs.existsSync(dlDir)) {
-                datasets = fs.readdirSync(dlDir)
-                    .filter(f => f.endsWith('.zim'))
-                    .map(f => {
-                        const id = f.replace('.zim', '');
-                        // Map known prefixes to human-readable names
-                        let name = id;
-                        if (id.startsWith('wikipedia_en_simple')) name = 'Wikipedia (Simple English)';
-                        else if (id.startsWith('wikipedia_en')) name = 'Wikipedia (English)';
-                        else if (id.startsWith('ifixit')) name = 'iFixit Repair Guides';
-                        else if (id.startsWith('wikibooks')) name = 'Wikibooks';
-                        else if (id.startsWith('stackoverflow')) name = 'Stack Exchange';
-                        else if (id.startsWith('mdwiki')) name = 'Medical Wikipedia';
-                        else if (id.startsWith('gutenberg')) name = 'Project Gutenberg';
-                        return { id, name };
-                    });
-            }
-        } catch (err) { }
-        res.json({ datasets });
-    });
-
+    
     // Get article content
     router.get('/article/*', async (req, res) => {
         try {

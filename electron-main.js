@@ -1,4 +1,4 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, shell } = require('electron');
 const path = require('path');
 const { fork } = require('child_process');
 
@@ -14,16 +14,47 @@ function createWindow() {
         icon: path.join(__dirname, 'CD Logo No Text.png'),
         webPreferences: {
             nodeIntegration: false,
-            contextIsolation: true
+            contextIsolation: true,
+            sandbox: true,
+            webviewTag: false
         }
     });
 
     // Hide menu bar for a cleaner "OS" look
     mainWindow.setMenuBarVisibility(false);
 
+    // The page renders content that arrives from LAN peers, so keep the window
+    // pinned to the local app and push anything else out to the real browser.
+    const isAppUrl = (target) => {
+        try {
+            const url = new URL(target);
+            return (url.hostname === 'localhost' || url.hostname === '127.0.0.1') &&
+                   (url.protocol === 'http:' || url.protocol === 'https:');
+        } catch (err) {
+            return false;
+        }
+    };
+
+    mainWindow.webContents.on('will-navigate', (event, targetUrl) => {
+        if (!isAppUrl(targetUrl)) {
+            event.preventDefault();
+            shell.openExternal(targetUrl).catch(() => { });
+        }
+    });
+
+    mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+        // Never spawn a child BrowserWindow: it would inherit webPreferences.
+        if (/^https?:\/\//i.test(url)) shell.openExternal(url).catch(() => { });
+        return { action: 'deny' };
+    });
+
+    mainWindow.webContents.on('will-attach-webview', (event) => {
+        event.preventDefault();
+    });
+
     // In production, we point to the local server
     // During startup, we might need to wait for the server to be ready
-    const serverUrl = 'http://localhost:8888';
+    const serverUrl = 'http://127.0.0.1:8888';
 
     const startLoading = () => {
         mainWindow.loadURL(serverUrl).catch(() => {
@@ -54,7 +85,10 @@ function startServer() {
         env: { 
             ...process.env, 
             ELECTRON_RUN_AS_NODE: '1',
-            CYBERDECK_DATA_HOME: dataHome
+            CYBERDECK_DATA_HOME: dataHome,
+            // Serve the full API over loopback HTTP for this window only; the
+            // LAN-facing listener stays HTTPS.
+            CYBERDECK_LOCAL_HTTP: '1'
         },
         stdio: 'ignore' // Suppress stdio to ensure no terminal interactions
     });

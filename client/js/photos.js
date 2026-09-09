@@ -34,7 +34,7 @@ const PhotosModule = {
                 <div class="empty-state">
                     <div class="empty-icon">📸</div>
                     <h3>Photo library unavailable</h3>
-                    <p>${err.message}</p>
+                    <p>${escapeHtml(err.message)}</p>
                 </div>`;
         }
     },
@@ -57,7 +57,6 @@ const PhotosModule = {
             html += '<div class="photo-grid">';
             group.photos.forEach(photo => {
                 const idx = this.photos.findIndex(p => p.id === photo.id);
-                const tokenParam = Auth.token ? `?token=${encodeURIComponent(Auth.token)}` : '';
                 html += `
                     <div class="photo-item" onclick="PhotosModule.openLightbox(${idx})">
                         <img src="${API}/api/photos/thumb/${photo.id}${tokenParam}" 
@@ -70,13 +69,14 @@ const PhotosModule = {
         el.innerHTML = html;
     },
 
-    openLightbox(index) {
+    async openLightbox(index) {
         this.currentLightbox = index;
         const photo = this.photos[index];
         const overlay = document.createElement('div');
         overlay.className = 'lightbox';
         overlay.id = 'lightbox';
-        const tokenParam = Auth.token ? `?token=${encodeURIComponent(Auth.token)}` : '';
+        // Media token, not the session token: these URLs end up in logs and history.
+        const tokenParam = await MediaAuth.param();
         overlay.innerHTML = `
             <button class="lightbox-close" onclick="PhotosModule.closeLightbox()">✕</button>
             <button class="lightbox-nav prev" onclick="event.stopPropagation(); PhotosModule.lightboxPrev()">‹</button>
@@ -89,6 +89,13 @@ const PhotosModule = {
         document.body.appendChild(overlay);
 
         // Keyboard navigation
+        // Remove any handler from a previous open before installing a new one;
+        // otherwise a double-open leaves the first permanently attached.
+        if (this._keyHandler) {
+            document.removeEventListener('keydown', this._keyHandler);
+            this._keyHandler = null;
+        }
+
         this._keyHandler = (e) => {
             if (e.key === 'Escape') this.closeLightbox();
             if (e.key === 'ArrowLeft') this.lightboxPrev();
@@ -117,3 +124,6 @@ const PhotosModule = {
         }
     }
 };
+
+// Exposed on window so app.js cleanup and delegated handlers can reach it.
+window.PhotosModule = PhotosModule;

@@ -5,12 +5,6 @@
 const DtnModule = {
     packets: [],
 
-    escapeHtml(text) {
-        if (!text) return '';
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    },
 
     async init() {
         const el = document.getElementById('mod-dtn');
@@ -86,7 +80,9 @@ const DtnModule = {
         this._interval = setInterval(() => {
             const page = document.getElementById('mod-dtn');
             // Only poll if DTN is actually open to save bandwidth
-            if (page && page.innerHTML !== '') {
+            // Was `page.innerHTML !== ''`, always true after init, so this
+            // polled every 5s regardless of which tab was open.
+            if (page && page.classList.contains('active')) {
                 this.refresh();
             }
         }, 5000);
@@ -162,15 +158,22 @@ const DtnModule = {
 
     async refresh() {
         if (this.isRefreshing) return;
+
+        // ChatModule calls refresh() on every dtn-sync message, whether or not
+        // the DTN tab has ever been opened. These elements did not exist then,
+        // the null dereference threw, and the catch handler dereferenced
+        // another null, escaping as an unhandled rejection.
+        const countEl = document.getElementById('dtn-spool-count');
+        const tbody = document.getElementById('dtn-spool-table');
+        if (!countEl || !tbody) return;
+
         this.isRefreshing = true;
         try {
             const res = await authFetch('/api/dtn/packets');
             const data = await res.json();
             this.packets = data.packets || [];
 
-            document.getElementById('dtn-spool-count').textContent = `${this.packets.length} Packets`;
-
-            const tbody = document.getElementById('dtn-spool-table');
+            countEl.textContent = `${this.packets.length} Packets`;
 
             if (this.packets.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="5" style="padding: 20px; text-align: center; color: var(--text-dim);">Spool is empty. Waiting for packets...</td></tr>';
@@ -184,24 +187,27 @@ const DtnModule = {
             for (const p of this.packets) {
                 const typeClr = p.type === 'sos' ? 'var(--red)' : (p.type === 'map_update' ? 'var(--green)' : 'var(--cyan)');
                 const hoursLeft = Math.max(0, Math.floor((p.ttl_expiry - Date.now()) / (1000 * 60 * 60)));
-                const shortId = p.id.substring(0, 8) + '...';
+                const shortId = escapeHtml(String(p.id || '').substring(0, 8)) + '...';
                 const payloadPreview = p.payload.length > 40 ? p.payload.substring(0, 40) + '...' : p.payload;
 
                 html += `
                     <tr style="border-bottom: 1px solid var(--border);">
                         <td style="padding: 10px; font-family: monospace; color: var(--text-dim);">${shortId}</td>
-                        <td style="padding: 10px;"><span class="tag" style="color: ${typeClr}; border-color: ${typeClr}; background: transparent;">${p.type.toUpperCase()}</span></td>
-                        <td style="padding: 10px;"><strong style="color:#fff">${this.escapeHtml(p.sender)}</strong> → <span style="color:var(--text-dim)">${this.escapeHtml(p.dest)}</span></td>
-                        <td style="padding: 10px;">${this.escapeHtml(payloadPreview)}</td>
+                        <td style="padding: 10px;"><span class="tag" style="color: ${typeClr}; border-color: ${typeClr}; background: transparent;">${escapeHtml(String(p.type || '').toUpperCase())}</span></td>
+                        <td style="padding: 10px;"><strong style="color:#fff">${escapeHtml(p.sender)}</strong> → <span style="color:var(--text-dim)">${escapeHtml(p.dest)}</span></td>
+                        <td style="padding: 10px;">${escapeHtml(payloadPreview)}</td>
                         <td style="padding: 10px; font-family: monospace; ${hoursLeft < 2 ? 'color: var(--red);' : 'color: var(--text-dim);'}">${hoursLeft}h</td>
                     </tr>
                 `;
             }
             tbody.innerHTML = html;
         } catch (e) {
-            document.getElementById('dtn-spool-table').innerHTML = `<tr><td colspan="5" style="color:red; padding:10px;">Failed to load spool: ${e.message}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="5" style="color:red; padding:10px;">Failed to load spool: ${escapeHtml(e.message)}</td></tr>`;
         } finally {
             this.isRefreshing = false;
         }
     }
 };
+
+// Exposed on window so app.js cleanup and delegated handlers can reach it.
+window.DtnModule = DtnModule;

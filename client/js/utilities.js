@@ -307,3 +307,6 @@ const UtilsModule = {
 setTimeout(() => {
     if (document.getElementById('convCategory')) UtilsModule.updateConvUnits();
 }, 100);
+
+// Exposed on window so app.js cleanup and delegated handlers can reach it.
+window.UtilsModule = UtilsModule;

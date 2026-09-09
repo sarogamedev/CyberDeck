@@ -36,6 +36,12 @@ const WikiModule = {
                 </div>
             </div>
         `;
+
+        // Article paths come from Kiwix search results.
+        delegate(document.getElementById('mod-wiki'), '[data-article-path]', (el) => {
+            WikiModule.loadArticle(el.dataset.articlePath);
+        });
+
         await this.checkStatus();
         this.loadDatasets();
     },
@@ -106,7 +112,7 @@ const WikiModule = {
             let html = '<ul class="wiki-results">';
             data.results.forEach(result => {
                 html += `
-                    <li class="wiki-result-item" onclick="WikiModule.loadArticle('${result.path.replace(/'/g, "\\'")}')">
+                    <li class="wiki-result-item" data-article-path="${escapeHtml(result.path)}">
                         <strong>${escapeHtml(result.title)}</strong>
                     </li>`;
             });
@@ -132,7 +138,7 @@ const WikiModule = {
 
             el.innerHTML = `
                 <button class="btn" onclick="WikiModule.init()" style="margin-bottom: 16px">← Back to search</button>
-                <div class="wiki-article">${data.html}</div>
+                <div class="wiki-article">${sanitizeHtml(data.html)}</div>
             `;
 
             const articleEl = el.querySelector('.wiki-article');
@@ -202,3 +208,6 @@ const WikiModule = {
         }
     }
 };
+
+// Exposed on window so app.js cleanup and delegated handlers can reach it.
+window.WikiModule = WikiModule;

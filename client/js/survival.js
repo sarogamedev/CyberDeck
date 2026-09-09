@@ -21,6 +21,12 @@ const SurvivalModule = {
             </div>
             <div id="survContent"><div class="loading-spinner"></div></div>
         `;
+
+        delegate(document.getElementById('mod-survival'), '[data-survival-category],[data-survival-article]', (el) => {
+            if (el.dataset.survivalCategory) SurvivalModule.showCategory(el.dataset.survivalCategory);
+            else SurvivalModule.readArticle(el.dataset.survivalArticle);
+        });
+
         await this.load();
     },
 
@@ -56,9 +62,9 @@ const SurvivalModule = {
         let html = '<div class="surv-grid">';
         this.categories.forEach(cat => {
             html += `
-                <div class="surv-category card" onclick="SurvivalModule.showCategory('${cat.name}')">
-                    <div class="surv-cat-icon">${cat.icon}</div>
-                    <div class="surv-cat-name">${cat.label}</div>
+                <div class="surv-category card" data-survival-category="${escapeHtml(cat.name)}">
+                    <div class="surv-cat-icon">${escapeHtml(cat.icon)}</div>
+                    <div class="surv-cat-name">${escapeHtml(cat.label)}</div>
                     <div class="surv-cat-count">${cat.articles.length} article${cat.articles.length > 1 ? 's' : ''}</div>
                 </div>`;
         });
@@ -73,12 +79,12 @@ const SurvivalModule = {
         const el = document.getElementById('survContent');
         let html = `
             <button class="btn" onclick="SurvivalModule.renderCategories()" style="margin-bottom:16px">← All Categories</button>
-            <h2 style="font-size:20px;margin-bottom:16px">${cat.icon} ${cat.label}</h2>
+            <h2 style="font-size:20px;margin-bottom:16px">${escapeHtml(cat.icon)} ${escapeHtml(cat.label)}</h2>
             <div class="article-list">`;
 
         cat.articles.forEach(article => {
             html += `
-                <div class="article-item" onclick="SurvivalModule.readArticle('${article.id}')">
+                <div class="article-item" data-survival-article="${escapeHtml(article.id)}">
                     <span class="article-icon">📄</span>
                     <div class="article-info">
                         <div class="article-title">${escapeHtml(article.title)}</div>
@@ -129,7 +135,7 @@ const SurvivalModule = {
                         <div class="article-list">`;
             data.results.forEach(r => {
                 html += `
-                    <div class="article-item" onclick="SurvivalModule.readArticle('${r.id}')">
+                    <div class="article-item" data-survival-article="${escapeHtml(r.id)}">
                         <span class="article-icon">📄</span>
                         <div class="article-info">
                             <div class="article-title">${escapeHtml(r.title)}</div>
@@ -145,7 +151,16 @@ const SurvivalModule = {
     },
 
     renderMarkdown(md) {
-        return md
+        // Escape first, then apply markdown. Without this the renderer passed
+        // raw HTML from the article through verbatim (table cells especially),
+        // so any markup in a content file executed on the app origin.
+        // llm.js:renderMarkdown already used this order; survival did not.
+        return String(md == null ? '' : md)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;')
             .replace(/^### (.+)$/gm, '<h3>$1</h3>')
             .replace(/^## (.+)$/gm, '<h2>$1</h2>')
             .replace(/^# (.+)$/gm, '<h1>$1</h1>')
@@ -203,3 +218,6 @@ const SurvivalModule = {
             .replace(/⚠️/g, '<span style="color:var(--yellow)">⚠️</span>');
     }
 };
+
+// Exposed on window so app.js cleanup and delegated handlers can reach it.
+window.SurvivalModule = SurvivalModule;

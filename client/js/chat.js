@@ -3,6 +3,8 @@
 // ═══════════════════════════════════════════
 
 const ChatModule = {
+    reconnectTimer: null,
+    shouldReconnect: true,
     ws: null,
     messages: [],
     users: [],
@@ -14,7 +16,7 @@ const ChatModule = {
             <div class="module-header">
                 <div>
                     <div class="module-title">LAN Chat</div>
-                    <div class="module-subtitle" id="chatStatus">Connecting...</div>
+                    <div class="module-subtitle" id="lanChatStatus">Connecting...</div>
                 </div>
                 <div style="display:flex;gap:8px;align-items:center">
                     <span id="chatUserCount" class="tag tag-cyan">0 online</span>
@@ -22,11 +24,11 @@ const ChatModule = {
                 </div>
             </div>
             <div class="chat-container">
-                <div class="chat-messages" id="chatMessages">
+                <div class="chat-messages" id="lanChatMessages">
                     <div class="empty-state"><div class="empty-icon">📡</div><h3>LAN Chat</h3><p>Messages are shared with all connected devices on this network</p></div>
                 </div>
                 <div class="chat-input-area">
-                    <input type="text" class="chat-input" id="chatInput" placeholder="Type a message..."
+                    <input type="text" class="chat-input" id="lanChatInput" placeholder="Type a message..."
                            onkeydown="if(event.key==='Enter') ChatModule.send()">
                     <button class="btn btn-primary" onclick="ChatModule.send()" style="padding:12px 20px">Send</button>
                 </div>
@@ -39,11 +41,22 @@ const ChatModule = {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}/ws/chat`;
 
+        // Re-initialising the module used to leave the old socket open, so a
+        // logout/login cycle accumulated live sockets, each with its own 10s
+        // DTN blast interval.
+        if (this.ws) {
+            try { this.ws.onclose = null; this.ws.close(); } catch (e) { }
+            this.ws = null;
+        }
+        if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
+        this.shouldReconnect = true;
+
         try {
             this.ws = new WebSocket(wsUrl);
 
             this.ws.onopen = () => {
-                document.getElementById('chatStatus').textContent = 'Connected to LAN';
+                const statusEl = document.getElementById('lanChatStatus');
+                if (statusEl) statusEl.textContent = 'Connected to LAN';
                 this.ws.send(JSON.stringify({
                     type: 'join',
                     username: Auth.user?.username || 'Anonymous',
@@ -69,26 +82,52 @@ const ChatModule = {
             };
 
             this.ws.onmessage = (event) => {
-                const msg = JSON.parse(event.data);
+                // One malformed frame from the relay used to throw straight out
+                // of the handler.
+                let msg;
+                try {
+                    msg = JSON.parse(event.data);
+                } catch (err) {
+                    console.warn('[Chat] Ignoring unparseable frame');
+                    return;
+                }
                 this.handleMessage(msg);
             };
 
             this.ws.onclose = () => {
-                if (this.dtnSyncInterval) clearInterval(this.dtnSyncInterval);
-                document.getElementById('chatStatus').textContent = 'Disconnected — reconnecting...';
-                setTimeout(() => this.connect(), 3000);
+                if (this.dtnSyncInterval) { clearInterval(this.dtnSyncInterval); this.dtnSyncInterval = null; }
+                const statusEl = document.getElementById('lanChatStatus');
+
+                // Do not reconnect after an explicit disconnect (logout).
+                if (!this.shouldReconnect) {
+                    if (statusEl) statusEl.textContent = 'Disconnected';
+                    return;
+                }
+                if (statusEl) statusEl.textContent = 'Disconnected — reconnecting...';
+                this.reconnectTimer = setTimeout(() => this.connect(), 3000);
             };
 
             this.ws.onerror = () => {
-                document.getElementById('chatStatus').textContent = 'Connection error';
+                document.getElementById('lanChatStatus').textContent = 'Connection error';
             };
         } catch (err) {
-            document.getElementById('chatStatus').textContent = 'WebSocket not supported';
+            document.getElementById('lanChatStatus').textContent = 'WebSocket not supported';
+        }
+    },
+
+    /** Close the socket and stop reconnecting. Called on logout. */
+    disconnect() {
+        this.shouldReconnect = false;
+        if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
+        if (this.dtnSyncInterval) { clearInterval(this.dtnSyncInterval); this.dtnSyncInterval = null; }
+        if (this.ws) {
+            try { this.ws.onclose = null; this.ws.close(); } catch (e) { }
+            this.ws = null;
         }
     },
 
     handleMessage(msg) {
-        const container = document.getElementById('chatMessages');
+        const container = document.getElementById('lanChatMessages');
         if (!container) return;
 
         switch (msg.type) {
@@ -125,7 +164,9 @@ const ChatModule = {
 
                 // Silently push them to our local spool
                 if (msg.dtnPayload && msg.dtnPayload.length > 0) {
-                    authFetch('/api/dtn/sync/receive', {
+                    // /sync/receive is now mesh-peer only; browsers use the
+                    // authenticated ingest route instead.
+                    authFetch('/api/dtn/ingest', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ packets: msg.dtnPayload })
@@ -147,7 +188,7 @@ const ChatModule = {
     },
 
     appendMsg(msg) {
-        const container = document.getElementById('chatMessages');
+        const container = document.getElementById('lanChatMessages');
         const isMe = msg.username === (Auth.user?.username || 'Anonymous');
         const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -156,8 +197,8 @@ const ChatModule = {
         div.innerHTML = `
             <div class="msg-avatar">${isMe ? '👤' : '🤝'}</div>
             <div>
-                <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px">${this.escapeHtml(msg.username)} · ${time}</div>
-                <div class="msg-bubble">${this.escapeHtml(msg.text)}</div>
+                <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px">${escapeHtml(msg.username)} · ${time}</div>
+                <div class="msg-bubble">${escapeHtml(msg.text)}</div>
             </div>
         `;
         container.appendChild(div);
@@ -165,7 +206,7 @@ const ChatModule = {
     },
 
     appendSystem(text) {
-        const container = document.getElementById('chatMessages');
+        const container = document.getElementById('lanChatMessages');
         const div = document.createElement('div');
         div.style.cssText = 'text-align:center;color:var(--text-dim);font-size:12px;padding:8px';
         div.textContent = text;
@@ -174,12 +215,12 @@ const ChatModule = {
     },
 
     appendEmergency(msg) {
-        const container = document.getElementById('chatMessages');
+        const container = document.getElementById('lanChatMessages');
         const div = document.createElement('div');
         div.style.cssText = 'background:rgba(255,51,102,0.15);border:1px solid var(--red);border-radius:8px;padding:16px;margin:8px 0;text-align:center';
         div.innerHTML = `<div style="font-size:24px;margin-bottom:8px">🚨</div>
             <div style="color:var(--red);font-weight:bold;font-size:16px">EMERGENCY from ${msg.username}</div>
-            <div style="margin-top:8px">${this.escapeHtml(msg.text)}</div>`;
+            <div style="margin-top:8px">${escapeHtml(msg.text)}</div>`;
         container.appendChild(div);
         container.scrollTop = container.scrollHeight;
 
@@ -196,7 +237,7 @@ const ChatModule = {
     },
 
     send() {
-        const input = document.getElementById('chatInput');
+        const input = document.getElementById('lanChatInput');
         const text = input.value.trim();
         if (!text || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
@@ -211,9 +252,7 @@ const ChatModule = {
         }
     },
 
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
 };
+
+// Exposed on window so app.js cleanup and delegated handlers can reach it.
+window.ChatModule = ChatModule;

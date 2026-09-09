@@ -1,5 +1,6 @@
 const express = require('express');
 const path = require('path');
+const { parseRange, sendUnsatisfiable } = require('../utils/httpRange');
 const fs = require('fs');
 const { scanDirectory, decodeFileId, getMimeType } = require('../utils/scanner');
 
@@ -25,8 +26,11 @@ module.exports = function (config) {
             // Group by folder
             const folders = {};
             for (const video of videos) {
-                const dir = path.dirname(video.path);
-                const folderName = path.basename(dir);
+                // scanDirectory emits relativePath, not path. Reading video.path
+                // gave undefined and path.dirname threw, so this route returned
+                // 500 for every non-empty video library.
+                const dir = path.dirname(video.relativePath || '');
+                const folderName = dir === '.' || dir === '' ? 'Videos' : path.basename(dir);
                 if (!folders[folderName]) folders[folderName] = [];
                 folders[folderName].push(video);
             }
@@ -52,10 +56,11 @@ module.exports = function (config) {
             const mime = getMimeType(ext);
             const range = req.headers.range;
 
-            if (range) {
-                const parts = range.replace(/bytes=/, '').split('-');
-                const start = parseInt(parts[0], 10);
-                const end = parts[1] ? parseInt(parts[1], 10) : Math.min(start + 10 * 1024 * 1024, stat.size - 1);
+            const parsed = parseRange(range, stat.size);
+            if (parsed === 'unsatisfiable') return sendUnsatisfiable(res, stat.size);
+
+            if (parsed) {
+                const { start, end } = parsed;
                 const chunkSize = end - start + 1;
 
                 res.writeHead(206, {

@@ -3,6 +3,7 @@
 // ═══════════════════════════════════════════
 
 const P2PModule = {
+    MAX_TRANSFER_BYTES: 4 * 1024 * 1024 * 1024, // 4 GB ceiling on a declared size
     peerConnection: null,
     dataChannel: null,
     fileReader: null,
@@ -162,8 +163,14 @@ const P2PModule = {
             return;
         }
 
-        this.expectedSize = msg.fileSize;
-        this.expectedName = msg.fileName;
+        const declaredSize = Number(msg.fileSize);
+        if (!Number.isInteger(declaredSize) || declaredSize <= 0 || declaredSize > this.MAX_TRANSFER_BYTES) {
+            console.warn('[P2P] Rejecting offer with an implausible file size');
+            return;
+        }
+        this.expectedSize = declaredSize;
+        // Filename comes from the remote peer and becomes a download name.
+        this.expectedName = this.sanitizeFileName(msg.fileName);
         this.sender = msg.from;
         this.receivedSize = 0;
         this.receiveBuffer = [];
@@ -202,8 +209,20 @@ const P2PModule = {
     },
 
     handleReceiveMessage(event) {
+        // The completion test was `=== expectedSize`, so a peer sending one
+        // extra byte overshot it, the equality never held, and receiveBuffer
+        // grew without bound. expectedSize itself is peer-supplied.
+        if (this.receivedSize >= this.expectedSize) return;
+
         this.receiveBuffer.push(event.data);
         this.receivedSize += event.data.byteLength;
+
+        if (this.receivedSize > this.expectedSize) {
+            console.warn('[P2P] Peer sent more data than declared; aborting transfer');
+            this.updateP2PProgress(this.sender, 0, 'Transfer aborted: size mismatch', this.expectedName);
+            this.reset();
+            return;
+        }
 
         const pct = Math.round((this.receivedSize / this.expectedSize) * 100);
         this.updateP2PProgress(this.sender, pct, 'Receiving...', this.expectedName);
@@ -217,12 +236,14 @@ const P2PModule = {
         const received = new Blob(this.receiveBuffer);
         this.receiveBuffer = []; // Clear memory
 
+        const url = URL.createObjectURL(received);
         const link = document.createElement('a');
-        link.href = URL.createObjectURL(received);
+        link.href = url;
         link.download = this.expectedName;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
 
         this.updateP2PProgress(this.sender, 100, 'File received and downloaded!', this.expectedName);
         setTimeout(() => this.reset(), 3000);
@@ -245,7 +266,23 @@ const P2PModule = {
         }
     },
 
+    /** Strip path separators and control characters from a peer filename. */
+    sanitizeFileName(name) {
+        const base = String(name || 'received-file')
+            .replace(/[\\/]/g, '_')
+            .replace(/[\x00-\x1f\x7f]/g, '')
+            .replace(/^\.+/, '')
+            .trim();
+        return base.slice(0, 200) || 'received-file';
+    },
+
     reset() {
+        this.expectedSize = 0;
+        this.expectedName = null;
+        this.receivedSize = 0;
+        this.receiveBuffer = [];
+        this.sender = null;
+
         if (this.dataChannel) {
             this.dataChannel.close();
             this.dataChannel = null;

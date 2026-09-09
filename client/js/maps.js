@@ -68,7 +68,7 @@ const MapsModule = {
 
             this.currentConfig = config;
             this.onlineTileUrl = config.onlineTileUrl || 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-            this.offlineTileUrl = config.offlineTileUrl ? `${config.offlineTileUrl}?token=${Auth.token}` : '';
+            this.offlineTileUrl = config.offlineTileUrl ? `${config.offlineTileUrl}${await MediaAuth.param()}` : '';
             this.isOffline = false; // Always start online
 
             // Show/hide the toggle button based on whether offline tiles exist
@@ -209,7 +209,7 @@ const MapsModule = {
                     try {
                         const cfgRes = await authFetch(`${API}/api/maps/config`);
                         const cfg = await cfgRes.json();
-                        this.offlineTileUrl = cfg.offlineTileUrl ? `${cfg.offlineTileUrl}?token=${Auth.token}` : '';
+                        this.offlineTileUrl = cfg.offlineTileUrl ? `${cfg.offlineTileUrl}${await MediaAuth.param()}` : '';
                         if (cfg.hasOfflineTiles) {
                             const toggleBtn = document.getElementById('btn-toggle-maps');
                             toggleBtn.style.display = '';
@@ -238,3 +238,6 @@ const MapsModule = {
         } catch (e) { }
     }
 };
+
+// Exposed on window so app.js cleanup and delegated handlers can reach it.
+window.MapsModule = MapsModule;

@@ -36,18 +36,27 @@ module.exports = function (config, rag) {
         try {
             if (!fetch) return res.status(500).json({ error: 'node-fetch not installed' });
 
-            const { model, messages, stream = true, useRag = false } = req.body;
+            const { model, messages, stream = true, useRag = false } = req.body || {};
+
+            // messages was used unchecked: a missing or non-array body threw on
+            // the spread and on messages[messages.length - 1].content.
+            if (!Array.isArray(messages) || messages.length === 0) {
+                return res.status(400).json({ error: 'messages must be a non-empty array' });
+            }
+            if (messages.some(m => !m || typeof m.content !== 'string')) {
+                return res.status(400).json({ error: 'each message needs a string content' });
+            }
+
             const modelName = model || config.services.ollama.defaultModel || 'tinyllama';
 
-            // 1. If RAG is enabled, get context
-            let augmentedMessages = [...messages];
-            if (useRag && messages.length > 0) {
-                const lastMsg = messages[messages.length - 1].content;
+            // 1. If RAG is enabled, get context.
+            // Copy the last message rather than mutating the caller's object.
+            let augmentedMessages = messages.map(m => ({ ...m }));
+            if (useRag) {
+                const lastMsg = augmentedMessages[augmentedMessages.length - 1].content;
                 const context = await rag.getContext(lastMsg);
                 if (context) {
-                    // Inject context as a system-like instruction at the start or before the last message
-                    // We'll append it to the last message for simplicity in this implementation
-                    augmentedMessages[augmentedMessages.length - 1].content = 
+                    augmentedMessages[augmentedMessages.length - 1].content =
                         `${context}\n\nUser Question: ${lastMsg}`;
                 }
             }
@@ -65,17 +74,38 @@ module.exports = function (config, rag) {
                 res.setHeader('Connection', 'keep-alive');
 
                 const reader = response.body;
+
+                // Ollama emits NDJSON, and TCP chunks split anywhere. Splitting
+                // each chunk on its own silently dropped any token that
+                // straddled a boundary, so a carry-over buffer holds the
+                // trailing partial line until the rest arrives.
+                let carry = '';
                 reader.on('data', (chunk) => {
-                    const lines = chunk.toString().split('\n').filter(l => l.trim());
+                    carry += chunk.toString();
+                    const lines = carry.split('\n');
+                    carry = lines.pop(); // Last element is the incomplete line.
+
                     for (const line of lines) {
+                        if (!line.trim()) continue;
                         try {
                             const data = JSON.parse(line);
                             res.write(`data: ${JSON.stringify(data)}\n\n`);
                             if (data.done) res.write('data: [DONE]\n\n');
-                        } catch (e) { }
+                        } catch (e) {
+                            console.warn('[LLM] Skipping unparseable stream line');
+                        }
                     }
                 });
-                reader.on('end', () => res.end());
+                reader.on('end', () => {
+                    // Flush anything left in the buffer at stream end.
+                    if (carry.trim()) {
+                        try {
+                            const data = JSON.parse(carry);
+                            res.write(`data: ${JSON.stringify(data)}\n\n`);
+                        } catch (e) { /* trailing junk */ }
+                    }
+                    res.end();
+                });
                 reader.on('error', (err) => {
                     res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
                     res.end();
@@ -117,7 +147,14 @@ module.exports = function (config, rag) {
     });
 
     // Pull a model
-    router.post('/pull', async (req, res) => {
+    // Pulling a model downloads multiple GB and spawns work on the host. The
+    // equivalent action in the content store already required admin approval.
+    router.post('/pull', (req, res, next) => {
+        if (!req.user || req.user.role !== 'admin') {
+            return res.status(403).json({ error: 'Admin access required to pull models' });
+        }
+        next();
+    }, async (req, res) => {
         try {
             if (!fetch) return res.status(500).json({ error: 'node-fetch not installed' });
             const { model } = req.body;

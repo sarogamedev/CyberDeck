@@ -9,6 +9,9 @@ const NearbyModule = {
     pollTimer: null,
     selfIp: 'Detecting...',
     peerItems: [],
+    pullKeys: {},       // domKey -> server download id
+    pullDomKeys: {},    // server download id -> domKey
+    pollTimers: {},     // server download id -> timeout handle
     activePulls: JSON.parse(localStorage.getItem('nearby_active_pulls') || '[]'),
 
     async init() {
@@ -23,11 +26,13 @@ const NearbyModule = {
             <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 20px; background: var(--surface2); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
                 <span class="search-icon">📡</span>
                 <input type="text" id="manual-peer-ip" class="input" placeholder="Enter peer IP (e.g. 192.168.1.50)..." style="flex: 1; border: none; background: transparent; color: var(--text);"
-                    onkeydown="if(event.key==='Enter') NearbyModule.connectManual()">
-                <button class="btn btn-primary btn-sm" onclick="NearbyModule.connectManual()">Connect</button>
+                    >
+                <button class="btn btn-primary btn-sm" data-action="connect-manual">Connect</button>
             </div>
             <div id="nearby-peers" style="margin-bottom: 20px;"><div class="loading-spinner"></div></div>
             <div id="nearby-library"></div>`;
+
+        this.bindEvents(el);
 
         await this.discoverPeers();
 
@@ -39,6 +44,63 @@ const NearbyModule = {
                 this.discoverPeers(true); // silent refresh
             }
         }, 15000);
+    },
+
+    /**
+     * One delegated listener for the whole module. Replaces inline onclick
+     * attributes that interpolated peer-supplied IPs and filenames into
+     * executable markup.
+     */
+    /** Stop all polling. Called from Auth.stopBackgroundTasks on logout. */
+    stopPolling() {
+        if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
+        for (const id of Object.keys(this.pollTimers)) clearTimeout(this.pollTimers[id]);
+        this.pollTimers = {};
+    },
+
+    bindEvents(root) {
+        if (root.dataset.eventsBound === '1') return;
+        root.dataset.eventsBound = '1';
+
+        root.addEventListener('click', (e) => {
+            const target = e.target.closest('[data-action]');
+            if (!target) return;
+
+            switch (target.dataset.action) {
+                case 'select-peer':
+                    this.selectPeer(target.dataset.peerIp);
+                    break;
+                case 'pull':
+                    this.pullContent(Number(target.dataset.index));
+                    break;
+                case 'pull-control': {
+                    const dlId = this.pullKeys[target.dataset.domKey];
+                    if (dlId) this.controlPull(dlId, target.dataset.op);
+                    break;
+                }
+                case 'connect-manual':
+                    this.connectManual();
+                    break;
+                case 'discover':
+                    this.discoverPeers();
+                    break;
+            }
+        });
+
+        root.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && e.target.id === 'manual-peer-ip') this.connectManual();
+        });
+
+        root.addEventListener('mouseover', (e) => {
+            const card = e.target.closest('.nearby-peer-card');
+            if (card) card.style.borderColor = 'var(--cyan)';
+        });
+        root.addEventListener('mouseout', (e) => {
+            const card = e.target.closest('.nearby-peer-card');
+            if (card && !card.classList.contains('is-selected')) {
+                card.style.borderColor = 'var(--border)';
+            }
+        });
     },
 
     async discoverPeers(silent = false) {
@@ -62,8 +124,9 @@ const NearbyModule = {
             this.renderPeers();
 
             // Auto-reconnect if we have a saved peer
+            // connectToPeer never existed; selectPeer is the real entry point.
             if (this.selectedPeer && this.peerItems.length === 0) {
-                this.connectToPeer(this.selectedPeer);
+                this.selectPeer(this.selectedPeer);
             }
 
             // Resume polling for saved active pulls
@@ -81,7 +144,7 @@ const NearbyModule = {
         let html = `
             <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;">
                 <span style="font-size: 12px; color: var(--text-dim);">Your IP: <strong style="color: var(--cyan);">${escapeHtml(this.selfIp)}</strong></span>
-                <button class="btn btn-sm" style="font-size:12px;" onclick="NearbyModule.discoverPeers()">Refresh</button>
+                <button class="btn btn-sm" style="font-size:12px;" data-action="discover">Refresh</button>
             </div>`;
 
         if (this.peers.length === 0) {
@@ -97,11 +160,12 @@ const NearbyModule = {
                 const agoSec = Math.floor(peer.agoMs / 1000);
                 const agoText = agoSec < 10 ? 'just now' : agoSec < 60 ? `${agoSec}s ago` : `${Math.floor(agoSec / 60)}m ago`;
 
+                // Peer IPs come from mDNS/UDP beacons, i.e. from anyone on the
+                // network. They are data attributes read by a delegated
+                // listener, never interpolated into executable markup.
                 html += `
-                    <div class="card" style="cursor: pointer; padding: 16px; border: 2px solid ${isSelected ? 'var(--cyan)' : 'var(--border)'}; transition: all 0.2s;"
-                        onclick="NearbyModule.selectPeer('${escapeHtml(peer.ip)}')"
-                        onmouseenter="this.style.borderColor='var(--cyan)'"
-                        onmouseleave="this.style.borderColor='${isSelected ? 'var(--cyan)' : 'var(--border)'}'"
+                    <div class="card nearby-peer-card${isSelected ? ' is-selected' : ''}" style="cursor: pointer; padding: 16px; border: 2px solid ${isSelected ? 'var(--cyan)' : 'var(--border)'}; transition: all 0.2s;"
+                        data-action="select-peer" data-peer-ip="${escapeHtml(peer.ip)}"
                     >
                         <div style="font-size: 24px; text-align: center; margin-bottom: 8px;">🖥️</div>
                         <div style="text-align: center;">
@@ -154,7 +218,7 @@ const NearbyModule = {
             if (!data.success) {
                 libEl.innerHTML = `<div class="empty-state"><h3>❌ Connection Failed</h3><p>${escapeHtml(data.error || 'Could not reach peer.')}</p>
                     <p style="font-size:12px;color:var(--text-dim);">Make sure the other CyberDeck is running on port 8443.</p>
-                    <button class="btn btn-sm" onclick="NearbyModule.connectToPeer('${escapeHtml(ip)}')">🔄 Retry</button></div>`;
+                    <button class="btn btn-sm" data-action="select-peer" data-peer-ip="${escapeHtml(ip)}">🔄 Retry</button></div>`;
                 return;
             }
 
@@ -163,7 +227,7 @@ const NearbyModule = {
             this.renderLibrary();
         } catch (err) {
             libEl.innerHTML = `<div class="empty-state"><h3>❌ Error</h3><p>${escapeHtml(err.message)}</p>
-                <button class="btn btn-sm" onclick="NearbyModule.connectToPeer('${escapeHtml(ip)}')">🔄 Retry</button></div>`;
+                <button class="btn btn-sm" data-action="select-peer" data-peer-ip="${escapeHtml(ip)}">🔄 Retry</button></div>`;
         }
     },
 
@@ -178,7 +242,7 @@ const NearbyModule = {
         let html = `<div style="margin-bottom: 16px; display: flex; align-items: center; gap: 10px;">
             <span style="font-size: 14px;">🖥️ <strong style="color: var(--cyan);">${escapeHtml(this.selectedPeer)}</strong></span>
             <span class="tag tag-cyan">${items.length} item${items.length !== 1 ? 's' : ''}</span>
-            <button class="btn btn-sm" style="font-size:12px;" onclick="NearbyModule.selectPeer('${escapeHtml(this.selectedPeer)}')">🔄 Refresh</button>
+            <button class="btn btn-sm" style="font-size:12px;" data-action="select-peer" data-peer-ip="${escapeHtml(this.selectedPeer)}">🔄 Refresh</button>
         </div>`;
 
         html += '<div class="store-grid">';
@@ -186,7 +250,13 @@ const NearbyModule = {
             const sizeMB = parseFloat(item.sizeMB) || (item.sizeBytes / (1024 * 1024));
             const sizeDisplay = sizeMB > 1024 ? (sizeMB / 1024).toFixed(1) + ' GB' : sizeMB.toFixed(0) + ' MB';
             const lic = item.license || {};
+            // dlId is the server-side download id and contains a peer-supplied
+            // filename. domKey is a local, index-derived id safe to put in
+            // markup; the two are mapped in this.pullKeys.
             const dlId = `peer-${item.filename}`;
+            const domKey = `p${index}`;
+            this.pullKeys[domKey] = dlId;
+            this.pullDomKeys[dlId] = domKey;
             const typeIcon = item.type === 'ollama' ? '🤖' : item.type === 'zim' ? '📚' : '📄';
             const typeLabel = item.type === 'ollama' ? 'AI Model' : item.type === 'zim' ? 'Knowledge Pack' : 'File';
 
@@ -202,23 +272,23 @@ const NearbyModule = {
                         ${lic.source ? `<span style="color:var(--text-dim);">${escapeHtml(lic.source)}</span>` : ''}
                     </div>` : ''}
                     <div class="store-item-actions">
-                        <div class="store-progress" id="prog-${dlId}" style="display:none; flex-direction: column; gap: 8px;">
+                        <div class="store-progress" id="prog-${domKey}" style="display:none; flex-direction: column; gap: 8px;">
                             <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px;">
-                                <span id="speed-${dlId}" style="color: var(--cyan);">0 B/s</span>
-                                <span id="text-${dlId}">0%</span>
+                                <span id="speed-${domKey}" style="color: var(--cyan);">0 B/s</span>
+                                <span id="text-${domKey}">0%</span>
                             </div>
                             <div class="store-progress-bar">
-                                <div class="store-progress-fill" id="fill-${dlId}"></div>
+                                <div class="store-progress-fill" id="fill-${domKey}"></div>
                             </div>
                             <div style="display: flex; gap: 4px;">
-                                <button class="btn btn-sm" id="pause-${dlId}" onclick="NearbyModule.controlPull('${dlId}', 'pause')" style="font-size: 9px; padding: 2px 6px;">⏸️ Pause</button>
-                                <button class="btn btn-sm" id="resume-${dlId}" onclick="NearbyModule.controlPull('${dlId}', 'resume')" style="font-size: 9px; padding: 2px 6px; display: none;">▶️ Resume</button>
-                                <button class="btn btn-sm" id="cancel-${dlId}" onclick="NearbyModule.controlPull('${dlId}', 'cancel')" style="font-size: 9px; padding: 2px 6px; color: var(--red);">✖️ Cancel</button>
+                                <button class="btn btn-sm" id="pause-${domKey}" data-action="pull-control" data-dom-key="${domKey}" data-op="pause" style="font-size: 9px; padding: 2px 6px;">⏸️ Pause</button>
+                                <button class="btn btn-sm" id="resume-${domKey}" data-action="pull-control" data-dom-key="${domKey}" data-op="resume" style="font-size: 9px; padding: 2px 6px; display: none;">▶️ Resume</button>
+                                <button class="btn btn-sm" id="cancel-${domKey}" data-action="pull-control" data-dom-key="${domKey}" data-op="cancel" style="font-size: 9px; padding: 2px 6px; color: var(--red);">✖️ Cancel</button>
                             </div>
                         </div>
                         ${item.pullable !== false
-                    ? `<button class="btn btn-primary btn-sm" id="btn-${dlId}"
-                                onclick="NearbyModule.pullContent(${index})">
+                    ? `<button class="btn btn-primary btn-sm" id="btn-${domKey}"
+                                data-action="pull" data-index="${index}">
                                 📥 Pull
                               </button>`
                     : `<span style="font-size:11px;color:var(--text-dim);font-style:italic;">Available on peer</span>`
@@ -240,8 +310,9 @@ const NearbyModule = {
         const licenseData = item.license;
 
         const dlId = `peer-${filename}`;
-        const btn = document.getElementById(`btn-${dlId}`);
-        const prog = document.getElementById(`prog-${dlId}`);
+        const domKey = this.pullDomKeys[dlId] || `p${itemIndex}`;
+        const btn = document.getElementById(`btn-${domKey}`);
+        const prog = document.getElementById(`prog-${domKey}`);
 
         if (btn) { btn.disabled = true; btn.textContent = '⏳ Pulling...'; }
         if (prog) prog.style.display = 'flex';
@@ -274,12 +345,27 @@ const NearbyModule = {
     },
 
     async pollPullProgress(dlId) {
-        const fill = document.getElementById(`fill-${dlId}`);
-        const text = document.getElementById(`text-${dlId}`);
-        const speedEl = document.getElementById(`speed-${dlId}`);
-        const btn = document.getElementById(`btn-${dlId}`);
-        const pauseBtn = document.getElementById(`pause-${dlId}`);
-        const resumeBtn = document.getElementById(`resume-${dlId}`);
+        // discoverPeers used to call this for every active pull on each 15s
+        // refresh, spawning a fresh, untracked setTimeout chain each time. One
+        // tracked timer per download id, replacing any previous one.
+        if (this.pollTimers[dlId]) {
+            clearTimeout(this.pollTimers[dlId]);
+            delete this.pollTimers[dlId];
+        }
+
+        const domKey = this.pullDomKeys[dlId];
+        const byId = (prefix) => (domKey ? document.getElementById(`${prefix}-${domKey}`) : null);
+        const fill = byId('fill');
+        const text = byId('text');
+        const speedEl = byId('speed');
+        const btn = byId('btn');
+        const pauseBtn = byId('pause');
+        const resumeBtn = byId('resume');
+
+        const schedule = (ms) => {
+            this.pollTimers[dlId] = setTimeout(check, ms);
+        };
+        const stop = () => { delete this.pollTimers[dlId]; };
 
         let lastBytes = 0;
         let lastTime = Date.now();
@@ -315,12 +401,13 @@ const NearbyModule = {
                             lastTime = now;
                         }
                     }
-                    setTimeout(check, 2000);
+                    schedule(2000);
                 } else if (data.status === 'complete') {
                     if (fill) { fill.style.width = '100%'; fill.style.background = 'var(--green)'; }
                     if (text) text.textContent = '✅ Complete!';
                     if (btn) { btn.textContent = '✅ Done'; btn.disabled = true; }
                     if (speedEl) speedEl.textContent = 'Finished';
+                    stop();
                     this.activePulls = this.activePulls.filter(id => id !== dlId);
                     localStorage.setItem('nearby_active_pulls', JSON.stringify(this.activePulls));
                 } else if (data.status === 'failed' || data.status === 'corrupted' || data.status === 'cancelled') {
@@ -332,12 +419,13 @@ const NearbyModule = {
                         this.activePulls = this.activePulls.filter(id => id !== dlId);
                         localStorage.setItem('nearby_active_pulls', JSON.stringify(this.activePulls));
                     }
+                    stop();
                     if (data.status === 'failed' && data.output) alert('Transfer failed:\n' + data.output);
                 } else {
-                    setTimeout(check, 3000);
+                    schedule(3000);
                 }
             } catch {
-                setTimeout(check, 5000);
+                schedule(5000);
             }
         };
         check();
@@ -360,3 +448,5 @@ const NearbyModule = {
         }
     }
 };
+
+window.NearbyModule = NearbyModule;

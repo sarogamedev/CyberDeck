@@ -23,6 +23,11 @@ const EbooksModule = {
             </div>
             <div id="ebooksContent"><div class="loading-spinner"></div></div>
         `;
+
+        delegate(document.getElementById('mod-ebooks'), '[data-book-id]', (el) => {
+            EbooksModule.openBook(el.dataset.bookId, el.dataset.bookTitle, el.dataset.bookExt);
+        });
+
         await this.load();
     },
 
@@ -68,7 +73,7 @@ const EbooksModule = {
         this.filteredBooks.forEach(book => {
             const formatColor = book.format === 'EPUB' ? 'tag-green' : book.format === 'PDF' ? 'tag-magenta' : 'tag-cyan';
             html += `
-                <div class="book-card" onclick="EbooksModule.openBook('${book.id}', '${book.title.replace(/'/g, "\\'")}', '${book.ext}')">
+                <div class="book-card" data-book-id="${escapeHtml(book.id)}" data-book-title="${escapeHtml(book.title)}" data-book-ext="${escapeHtml(book.ext)}">
                     <div class="book-cover">📖</div>
                     <div class="book-title">${escapeHtml(book.title)}</div>
                     <div class="book-format">
@@ -81,8 +86,9 @@ const EbooksModule = {
         el.innerHTML = html;
     },
 
-    openBook(id, title, ext) {
-        const tokenParam = Auth.token ? `?token=${encodeURIComponent(Auth.token)}` : '';
+    async openBook(id, title, ext) {
+        // Media token, not the session token: these URLs end up in logs and history.
+        const tokenParam = await MediaAuth.param();
         if (ext === 'epub' && typeof ePub !== 'undefined') {
             this.openEpub(id, title, tokenParam);
         } else if (ext === 'pdf') {
@@ -167,3 +173,6 @@ const EbooksModule = {
         document.removeEventListener('keydown', this._keyHandler);
     }
 };
+
+// Exposed on window so app.js cleanup and delegated handlers can reach it.
+window.EbooksModule = EbooksModule;

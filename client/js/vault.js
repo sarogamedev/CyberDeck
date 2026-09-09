@@ -11,6 +11,16 @@ const VaultModule = {
         const el = document.getElementById('mod-vault');
         el.innerHTML = '<div class="loading-spinner"></div>';
 
+        // Delegated handlers for file rows. Vault filenames are user-supplied
+        // and were previously interpolated into onclick attributes, where the
+        // escape-then-replace idiom failed on backslashes and double quotes.
+        delegate(el, '[data-vault-action]', (target) => {
+            const id = target.dataset.fileId;
+            const name = target.dataset.fileName;
+            if (target.dataset.vaultAction === 'retrieve') VaultModule.retrieve(id, name);
+            else if (target.dataset.vaultAction === 'delete') VaultModule.deleteFile(id, name);
+        });
+
         try {
             const res = await authFetch(`${API}/api/vault/status`);
             const data = await res.json();
@@ -21,7 +31,7 @@ const VaultModule = {
                 this.showLogin(el);
             }
         } catch (err) {
-            el.innerHTML = `<div class="empty-state"><h3>Vault unavailable</h3><p>${err.message}</p></div>`;
+            el.innerHTML = `<div class="empty-state"><h3>Vault unavailable</h3><p>${escapeHtml(err.message)}</p></div>`;
         }
     },
 
@@ -145,8 +155,8 @@ const VaultModule = {
                     <span class="file-size">${formatBytes(f.size)}</span>
                     <span class="file-date">${formatDate(f.date)}</span>
                     <div class="file-actions">
-                        <button class="file-action-btn" onclick="VaultModule.retrieve('${f.id}', '${escapeHtml(f.name).replace(/'/g, "\\'")}')">⬇️</button>
-                        <button class="file-action-btn" onclick="VaultModule.deleteFile('${f.id}', '${escapeHtml(f.name).replace(/'/g, "\\'")}')">🗑</button>
+                        <button class="file-action-btn" data-vault-action="retrieve" data-file-id="${escapeHtml(f.id)}" data-file-name="${escapeHtml(f.name)}">⬇️</button>
+                        <button class="file-action-btn" data-vault-action="delete" data-file-id="${escapeHtml(f.id)}" data-file-name="${escapeHtml(f.name)}">🗑</button>
                     </div>
                 </div>`;
         });
@@ -190,8 +200,14 @@ const VaultModule = {
             const blob = await res.blob();
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.href = url; a.download = name; a.click();
-            URL.revokeObjectURL(url);
+            a.href = url;
+            a.download = name;
+            // The anchor must be in the document and the object URL must
+            // outlive the click, or the download is cancelled.
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 10000);
         } catch (err) { alert('Retrieval failed: ' + err.message); }
     },
 
@@ -208,14 +224,20 @@ const VaultModule = {
     },
 
     async refreshFiles() {
-        const res = await authFetch(`${API}/api/vault/unlock`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ password: this.vaultPassword })
-        });
-        const data = await res.json();
-        this.files = data.files || [];
-        this.showVault();
+        // Uses the unlock token rather than re-sending the password. The old
+        // version referenced this.vaultPassword, which is never assigned
+        // anywhere, so the list emptied itself after every store and delete.
+        try {
+            const res = await authFetch(`${API}/api/vault/files`, {
+                headers: { 'x-vault-token': this.vaultToken }
+            });
+            if (!res.ok) throw new Error((await res.json()).error || 'Could not list vault files');
+            const data = await res.json();
+            this.files = data.files || [];
+            this.showVault();
+        } catch (err) {
+            alert('Could not refresh vault: ' + err.message);
+        }
     },
 
     lock() {
@@ -225,3 +247,6 @@ const VaultModule = {
         this.init();
     }
 };
+
+// Exposed on window so app.js cleanup and delegated handlers can reach it.
+window.VaultModule = VaultModule;

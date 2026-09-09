@@ -2,7 +2,10 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
-const USERS_FILE = path.join(__dirname, '..', 'users.json');
+const { getSecret } = require('./secretStore');
+
+const STATE_DIR = process.env.CYBERDECK_DATA_HOME || path.join(__dirname, '..');
+const USERS_FILE = path.join(STATE_DIR, 'users.json');
 const SESSIONS = new Map(); // In-memory session store
 const SESSION_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -40,19 +43,57 @@ setInterval(() => {
     for (const [ip, record] of LOGIN_ATTEMPTS.entries()) {
         if (now - record.firstAttempt > LOGIN_WINDOW_MS) LOGIN_ATTEMPTS.delete(ip);
     }
-}, 60000);
+}, 60000).unref();
 
 // ── Password Hashing ──
 
-function hashPassword(password, salt) {
+// Current cost. Existing users keep the iteration count recorded on their
+// record and are transparently upgraded the next time they log in.
+const PBKDF2_ITERATIONS = 210000;
+const LEGACY_ITERATIONS = 10000;
+
+function hashPassword(password, salt, iterations = PBKDF2_ITERATIONS) {
     salt = salt || crypto.randomBytes(16).toString('hex');
-    const hash = crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
-    return { salt, hash };
+    const hash = crypto.pbkdf2Sync(password, salt, iterations, 64, 'sha512').toString('hex');
+    return { salt, hash, iterations };
 }
 
-function verifyPassword(password, salt, storedHash) {
-    const { hash } = hashPassword(password, salt);
-    return hash === storedHash;
+/**
+ * Constant-time password check. The previous `hash === storedHash` leaked
+ * timing information about how many leading bytes matched.
+ */
+function verifyPassword(password, salt, storedHash, iterations = LEGACY_ITERATIONS) {
+    const { hash } = hashPassword(password, salt, iterations);
+    const a = Buffer.from(hash, 'hex');
+    const b = Buffer.from(String(storedHash || ''), 'hex');
+    if (a.length !== b.length) return false;
+    return crypto.timingSafeEqual(a, b);
+}
+
+/**
+ * Verify against a user record and upgrade the stored hash if it still uses the
+ * old iteration count.
+ */
+function verifyUser(user, password) {
+    if (!user) return false;
+    const iterations = Number(user.iterations) || LEGACY_ITERATIONS;
+    if (!verifyPassword(password, user.salt, user.passwordHash, iterations)) return false;
+
+    if (iterations < PBKDF2_ITERATIONS) {
+        try {
+            const users = loadUsers();
+            if (users[user.username]) {
+                const upgraded = hashPassword(password, null, PBKDF2_ITERATIONS);
+                users[user.username].passwordHash = upgraded.hash;
+                users[user.username].salt = upgraded.salt;
+                users[user.username].iterations = upgraded.iterations;
+                saveUsers(users);
+            }
+        } catch (err) {
+            console.error('[auth] Could not upgrade password hash:', err.message);
+        }
+    }
+    return true;
 }
 
 // ── User Database ──
@@ -60,13 +101,17 @@ function verifyPassword(password, salt, storedHash) {
 function loadUsers() {
     if (!fs.existsSync(USERS_FILE)) {
         // Create default admin user: admin / cyberdeck
-        const { salt, hash } = hashPassword('cyberdeck');
+        const { salt, hash, iterations } = hashPassword('cyberdeck');
         const defaultUsers = {
             admin: {
                 username: 'admin',
                 passwordHash: hash,
                 salt: salt,
+                iterations,
                 role: 'admin',
+                // Seeded credentials are identical on every install, so the
+                // account is unusable for anything but changing its password.
+                mustChangePassword: true,
                 createdAt: new Date().toISOString()
             }
         };
@@ -77,7 +122,11 @@ function loadUsers() {
 }
 
 function saveUsers(users) {
-    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+    // Write via a temp file and rename, so a crash mid-write cannot truncate
+    // the entire user database.
+    const tmp = `${USERS_FILE}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(users, null, 2), { mode: 0o600 });
+    fs.renameSync(tmp, USERS_FILE);
 }
 
 function getUser(username) {
@@ -89,11 +138,12 @@ function createUser(username, password, role = 'user') {
     const users = loadUsers();
     if (users[username]) return { error: 'User already exists' };
 
-    const { salt, hash } = hashPassword(password);
+    const { salt, hash, iterations } = hashPassword(password);
     users[username] = {
         username,
         passwordHash: hash,
         salt,
+        iterations,
         role,
         createdAt: new Date().toISOString()
     };
@@ -122,9 +172,11 @@ function listUsers() {
 function changePassword(username, newPassword) {
     const users = loadUsers();
     if (!users[username]) return { error: 'User not found' };
-    const { salt, hash } = hashPassword(newPassword);
+    const { salt, hash, iterations } = hashPassword(newPassword);
     users[username].passwordHash = hash;
     users[username].salt = salt;
+    users[username].iterations = iterations;
+    delete users[username].mustChangePassword;
     saveUsers(users);
     return { success: true };
 }
@@ -154,44 +206,124 @@ function getSession(token) {
 
 function destroySession(token) {
     SESSIONS.delete(token);
+    for (const [mt, rec] of MEDIA_TOKENS) {
+        if (rec.session === token) MEDIA_TOKENS.delete(mt);
+    }
 }
+
+// ── Media tokens ──
+//
+// <img>, <audio>, <video> and <iframe> cannot send headers, so media URLs used
+// to carry the full session token in the query string, where it landed in
+// access logs, browser history and Referer headers. These replacements are
+// short-lived, read-only, and usable on GET requests to media routes only.
+
+const MEDIA_TOKENS = new Map();
+const MEDIA_TOKEN_TTL = 60 * 60 * 1000; // 1 hour
+
+function createMediaToken(session, sessionToken) {
+    const token = crypto.randomBytes(32).toString('hex');
+    MEDIA_TOKENS.set(token, {
+        username: session.username,
+        role: session.role,
+        session: sessionToken,
+        expiresAt: Date.now() + MEDIA_TOKEN_TTL
+    });
+    return { token, expiresIn: MEDIA_TOKEN_TTL };
+}
+
+function getMediaToken(token) {
+    const rec = MEDIA_TOKENS.get(token);
+    if (!rec) return null;
+    if (Date.now() > rec.expiresAt) {
+        MEDIA_TOKENS.delete(token);
+        return null;
+    }
+    // A media token dies with the session that issued it.
+    if (!SESSIONS.has(rec.session)) {
+        MEDIA_TOKENS.delete(token);
+        return null;
+    }
+    return rec;
+}
+
+setInterval(() => {
+    const now = Date.now();
+    for (const [token, rec] of MEDIA_TOKENS) {
+        if (now > rec.expiresAt) MEDIA_TOKENS.delete(token);
+    }
+}, 5 * 60 * 1000).unref();
 
 // ── Middleware ──
 
+/**
+ * Resolve the caller's session from the header. Query-string tokens are no
+ * longer accepted here; see requireMediaAuth for the media-element case.
+ */
+function resolveSession(req) {
+    const token = req.headers['x-auth-token'];
+    if (!token) return { error: 'Authentication required', status: 401 };
+    const session = getSession(token);
+    if (!session) return { error: 'Invalid or expired session', status: 401 };
+
+    // An account still on its seeded password may only change that password.
+    const user = getUser(session.username);
+    if (user && user.mustChangePassword) {
+        return {
+            error: 'Password change required before using this account',
+            status: 403,
+            code: 'password_change_required'
+        };
+    }
+    return { session, token };
+}
+
 /** Require any authenticated user */
 function requireAuth(req, res, next) {
-    // Note: query token is needed for media elements (img, audio, video src) that cannot send headers
-    const token = req.headers['x-auth-token'] || req.query.token;
-    if (!token) {
-        return res.status(401).json({ error: 'Authentication required' });
+    const result = resolveSession(req);
+    if (result.error) {
+        return res.status(result.status).json({ error: result.error, code: result.code });
     }
-    const session = getSession(token);
-    if (!session) {
-        return res.status(401).json({ error: 'Invalid or expired session' });
-    }
-    req.user = session;
+    req.user = result.session;
+    req.sessionToken = result.token;
     next();
 }
 
 /** Require admin role */
 function requireAdmin(req, res, next) {
-    const token = req.headers['x-auth-token'] || req.query.token;
-    if (!token) {
-        return res.status(401).json({ error: 'Authentication required' });
+    const result = resolveSession(req);
+    if (result.error) {
+        return res.status(result.status).json({ error: result.error, code: result.code });
     }
-    const session = getSession(token);
-    if (!session) {
-        return res.status(401).json({ error: 'Invalid or expired session' });
-    }
-    if (session.role !== 'admin') {
+    if (result.session.role !== 'admin') {
         return res.status(403).json({ error: 'Admin access required' });
     }
-    req.user = session;
+    req.user = result.session;
+    req.sessionToken = result.token;
     next();
 }
 
+/**
+ * For routes that media elements load directly. Accepts a normal session header
+ * or, on GET only, a short-lived media token in the query string.
+ */
+function requireMediaAuth(req, res, next) {
+    if (req.headers['x-auth-token']) return requireAuth(req, res, next);
+
+    if (req.method === 'GET' && typeof req.query.token === 'string') {
+        const rec = getMediaToken(req.query.token);
+        if (rec) {
+            req.user = { username: rec.username, role: rec.role };
+            return next();
+        }
+    }
+    return res.status(401).json({ error: 'Authentication required' });
+}
+
 module.exports = {
-    hashPassword, verifyPassword,
+    hashPassword, verifyPassword, verifyUser,
+    createMediaToken, getMediaToken,
+    requireMediaAuth,
     loadUsers, getUser, createUser, deleteUser, listUsers, changePassword,
     createSession, getSession, destroySession,
     requireAuth, requireAdmin,

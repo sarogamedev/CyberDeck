@@ -37,7 +37,7 @@ const PowerModule = {
             document.getElementById('battInfo').innerHTML = `
                 <div style="font-size:32px;font-weight:bold;color:${color}">${pct}%</div>
                 <div class="power-bar"><div class="power-bar-fill" style="width:${pct}%;background:${color}"></div></div>
-                <div style="margin-top:8px;font-size:13px;color:var(--text-dim)">${d.status || ''} · ${d.temperature ? d.temperature + '°C' : ''} · ${d.health || ''}</div>`;
+                <div style="margin-top:8px;font-size:13px;color:var(--text-dim)">${escapeHtml(d.status || '')} · ${d.temperature ? d.temperature + '°C' : ''} · ${d.health || ''}</div>`;
         } catch { document.getElementById('battInfo').innerHTML = '<p style="color:var(--text-dim)">Unavailable</p>'; }
     },
 
@@ -50,7 +50,7 @@ const PowerModule = {
                 <div style="font-size:13px;margin-bottom:4px">RAM: ${mp}%</div>
                 <div class="power-bar"><div class="power-bar-fill" style="width:${mp}%;background:${mp > 80 ? 'var(--red)' : 'var(--primary)'}"></div></div>
                 <div style="font-size:12px;color:var(--text-dim);margin-top:4px">${(d.memory.used / 1073741824).toFixed(1)}GB / ${(d.memory.total / 1073741824).toFixed(1)}GB</div>
-                <div style="margin-top:12px;font-size:13px">CPUs: ${d.cpu.count} · Usage: ${d.cpu.usagePercent}%</div>
+                <div style="margin-top:12px;font-size:13px">CPUs: ${escapeHtml(d.cpu.count)} · Usage: ${escapeHtml(d.cpu.usagePercent)}%</div>
                 <div style="font-size:12px;color:var(--text-dim)">Uptime: ${Math.floor(d.uptime / 3600)}h ${Math.floor((d.uptime % 3600) / 60)}m</div>`;
         } catch { document.getElementById('memInfo').innerHTML = '<p style="color:var(--text-dim)">Unavailable</p>'; }
     },
@@ -62,9 +62,9 @@ const PowerModule = {
             if (!d.available) { document.getElementById('storageInfo').innerHTML = '<p style="color:var(--text-dim)">Unavailable</p>'; return; }
             const pct = parseInt(d.percent) || 0;
             document.getElementById('storageInfo').innerHTML = `
-                <div style="font-size:13px;margin-bottom:4px">Used: ${d.percent}</div>
+                <div style="font-size:13px;margin-bottom:4px">Used: ${escapeHtml(d.percent)}</div>
                 <div class="power-bar"><div class="power-bar-fill" style="width:${pct}%;background:${pct > 85 ? 'var(--red)' : 'var(--primary)'}"></div></div>
-                <div style="font-size:12px;color:var(--text-dim);margin-top:4px">${d.used} / ${d.total} (${d.free} free)</div>`;
+                <div style="font-size:12px;color:var(--text-dim);margin-top:4px">${escapeHtml(d.used)} / ${escapeHtml(d.total)} (${escapeHtml(d.free)} free)</div>`;
         } catch { document.getElementById('storageInfo').innerHTML = '<p style="color:var(--text-dim)">Unavailable</p>'; }
     },
 
@@ -76,7 +76,7 @@ const PowerModule = {
             for (const [k, s] of Object.entries(d)) {
                 html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)">
                     <span style="width:8px;height:8px;border-radius:50%;background:${s.running ? 'var(--green)' : 'var(--red)'}"></span>
-                    <span style="flex:1;font-size:13px">${s.label}</span>
+                    <span style="flex:1;font-size:13px">${escapeHtml(s.label)}</span>
                     <span style="font-size:11px;color:var(--text-dim)">${s.running ? 'Running' : 'Stopped'}</span>
                     ${s.heavy ? '<span class="tag tag-magenta">Heavy</span>' : ''}
                 </div>`;
@@ -97,3 +97,6 @@ const PowerModule = {
         } catch (e) { alert('Error: ' + e.message); }
     }
 };
+
+// Exposed on window so app.js cleanup and delegated handlers can reach it.
+window.PowerModule = PowerModule;

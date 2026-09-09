@@ -5,6 +5,15 @@ const { exec } = require('child_process');
 module.exports = function (config) {
     const router = express.Router();
 
+    // These kill and start OS processes and drive device hardware, so they are
+    // admin actions. They were previously open to any logged-in user.
+    const adminOnly = (req, res, next) => {
+        if (!req.user || req.user.role !== 'admin') {
+            return res.status(403).json({ error: 'Admin access required' });
+        }
+        next();
+    };
+
     // Get battery info (Cross-platform)
     router.get('/battery', (req, res) => {
         const isWin = process.platform === 'win32';
@@ -175,7 +184,7 @@ module.exports = function (config) {
     });
 
     // Toggle low power mode (Cross-platform)
-    router.post('/low-power', (req, res) => {
+    router.post('/low-power', adminOnly, (req, res) => {
         const { enabled } = req.body;
         const isWin = process.platform === 'win32';
 
@@ -192,7 +201,7 @@ module.exports = function (config) {
     });
 
     // Torch control (Termux:API)
-    router.post('/torch', (req, res) => {
+    router.post('/torch', adminOnly, (req, res) => {
         const { enabled } = req.body;
         exec(`termux-torch ${enabled ? 'on' : 'off'}`, { timeout: 3000 }, (err) => {
             res.json({ success: !err, torch: enabled });
@@ -200,7 +209,7 @@ module.exports = function (config) {
     });
 
     // Vibrate (Termux:API)
-    router.post('/vibrate', (req, res) => {
+    router.post('/vibrate', adminOnly, (req, res) => {
         exec('termux-vibrate -d 200', { timeout: 3000 }, (err) => {
             res.json({ success: !err });
         });
