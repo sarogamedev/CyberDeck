@@ -10,7 +10,7 @@ longer built from this branch:
 |---|---|---|
 | CyberDeck Server (native Android app) | `CyberDeck_Server_V1.0.5.apk` | Deprecated, unmaintained |
 | CyberDeck Client (native Android app) | `CyberDeck_Client_V1.0.0.apk` | Deprecated, unmaintained |
-| CyberDeck Desktop (packaged Windows `.exe`) | built via electron-builder | Packaging removed |
+| CyberDeck Desktop (Electron shell and packaged `.exe`) | built via electron-builder | Removed |
 
 Existing builds remain downloadable from the
 [Releases](https://github.com/sarogamedev/CyberDeck/releases) page, and the
@@ -26,29 +26,27 @@ already running them. They do not receive fixes, including security fixes.
 
 ## What is still here
 
-Nothing about running CyberDeck changed. The server runs on Android via Termux,
-Linux, Windows and macOS, and any device on the network opens the UI in a
-browser. See the Quick Start section of [README.md](README.md).
+Everything. CyberDeck is a server you open in a browser, and none of the removed
+distributions were required for that:
 
-The **Electron desktop window is still supported** and still runs from source:
+- the server runs on Android via Termux, Linux, Windows and macOS
+- any device on the network opens the UI in a browser
+- on the machine running it, `http://localhost:8888` serves the app directly
 
-```bash
-npm run setup   # installs the desktop shell and the server
-npm start       # opens the desktop window
-```
-
-It starts the server as a child process and loads the same browser UI, so it is
-a convenience wrapper, not a separate application.
+See the Quick Start section of [README.md](README.md).
 
 ## What was removed
 
-Only the packaging pipeline, because its output belongs in Releases rather than
-in the repository:
+### Electron desktop shell and Windows packaging
 
-- the `electron-builder` dependency
-- the `build` block in `package.json` that defined the portable Windows `.exe`
-  target, `asar: false`, and the `extraResources` entry for `kiwix-serve.exe`
-- the `npm run build` script
+`electron-main.js`, the `electron` and `electron-builder` dependencies, the
+`build` block defining the portable `.exe` target, the `npm run build` script,
+and the root `package-lock.json`.
+
+The shell did three things: fork `server/server.js`, set two environment
+variables, and open a window pointed at `http://localhost:8888`. A browser tab
+does the same thing, so it was a wrapper rather than a feature. Nothing in
+`server/` or `client/` ever referenced Electron.
 
 The old build instructions were:
 
@@ -58,22 +56,35 @@ The old build instructions were:
 npm install
 # 3. Build the portable executable into dist/
 npm run build
+# 4. Or run without building
+npm start
 ```
 
-Removing the packaging step also let the root `package.json` shed the runtime
-dependencies it duplicated from `server/package.json`; they existed only so
-electron-builder could bundle them. `electron-main.js` requires nothing but
-`electron` and Node builtins, and it forks the server with `cwd` set to
-`server/`, so the server resolves its own dependencies. The root lockfile went
-from 461 packages to 71.
+`npm start` at the repository root now starts the server.
 
-To restore packaging, add `electron-builder` back as a dev dependency and
-recover the `build` block from history:
+Removing the shell also emptied the root `package.json`. Nothing at the
+repository root executes any more, so the runtime dependencies it duplicated
+from `server/package.json` went with it, along with the root lockfile that
+pinned 461 packages. `server/` owns its dependencies and its own lockfile.
+
+One behaviour the shell provided is now built in. It set `CYBERDECK_LOCAL_HTTP`
+so the window could load the app over loopback without accepting a self-signed
+certificate. The HTTP listener now makes that decision per request: loopback
+clients are served the app directly, and everyone else is redirected to HTTPS.
+Local browsing needs no certificate prompt, and credentials still never cross
+the network in the clear.
+
+To restore the shell, recover it from history:
 
 ```bash
-git log --oneline -- package.json
-git show <commit-before-removal>:package.json
+git log --oneline -- electron-main.js
+git checkout <commit-before-removal> -- electron-main.js package.json
 ```
+
+Two icon files at the repository root, `CD Logo New.png` and
+`CD Logo No Text.png`, were the Electron window icon and are now unreferenced by
+any code. They are left in place as project branding; the client has its own
+`client/img/logo.png`.
 
 ## Native Android apps
 

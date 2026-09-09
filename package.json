@@ -1,16 +1,12 @@
 {
     "name": "cyberdeck",
     "version": "1.0.0",
-    "description": "CyberDeck - offline-first mesh knowledge and communication platform",
+    "description": "CyberDeck - offline-first mesh knowledge and communication server",
     "author": "Saro",
     "scripts": {
-        "start": "electron .",
-        "server": "npm --prefix server start",
-        "setup": "npm install && npm --prefix server install",
-        "check": "node -e \"const cp=require('child_process');require('fs').readdirSync('client/js').forEach(f=>cp.execFileSync(process.execPath,['--check','client/js/'+f]));cp.execFileSync(process.execPath,['--check','client/sw.js']);cp.execFileSync(process.execPath,['--check','electron-main.js'])\""
+        "start": "npm --prefix server start",
+        "setup": "npm --prefix server install",
+        "check": "node -e \"const cp=require('child_process');require('fs').readdirSync('client/js').forEach(f=>cp.execFileSync(process.execPath,['--check','client/js/'+f]));cp.execFileSync(process.execPath,['--check','client/sw.js'])\""
     },
-    "main": "electron-main.js",
-    "devDependencies": {
-        "electron": "^31.0.0"
-    }
+    "private": true
 }

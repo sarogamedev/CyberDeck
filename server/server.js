@@ -702,38 +702,48 @@ pemsPromise.then(pems => {
     const PORT = safePort(config.port, 8888);
     const HTTPS_PORT = safePort(config.httpsPort, 8443);
 
-    // The plaintext listener carried logins, session tokens and every API
-    // response in the clear. It is now off unless explicitly enabled, and when
-    // enabled it only redirects to HTTPS (set features.plainHttpApi to serve
-    // the full API over HTTP, for captive-portal or legacy-Android setups).
+    // The plaintext listener used to carry logins, session tokens and every API
+    // response in the clear to anyone on the network.
+    //
+    // It now decides per request, by who is asking:
+    //
+    //   loopback (127.0.0.1 / ::1) -> serve the app directly. The bytes never
+    //     leave the machine, so there is nothing to intercept, and browsing
+    //     locally does not mean clicking through a self-signed certificate.
+    //   anyone else                -> 301 to HTTPS. Nothing sensitive is served
+    //     over the wire in the clear, and http://<lan-ip>:8888 still works as
+    //     the address people actually type, including captive-portal probes.
+    //
+    // features.plainHttpApi = true serves the full API in the clear to the
+    // whole network. It exists for captive-portal and legacy-Android setups
+    // that cannot do TLS at all; it is off by default and it is not safe on a
+    // network you do not control.
     const httpEnabled = config.features?.httpRedirect !== false;
+    const plainHttpApi = config.features?.plainHttpApi === true;
 
-    // Opt-in loopback mode for a local wrapper or kiosk browser that cannot
-    // accept the self-signed certificate. Binding the plain listener to
-    // 127.0.0.1 keeps that working without exposing the API in the clear to
-    // the rest of the network.
-    const localHttpOnly = process.env.CYBERDECK_LOCAL_HTTP === '1';
-    const plainHttpApi = localHttpOnly || config.features?.plainHttpApi === true;
-    const httpBindAddress = localHttpOnly && config.features?.plainHttpApi !== true
-        ? '127.0.0.1'
-        : '0.0.0.0';
+    const isLoopback = (req) => {
+        const addr = req.socket.remoteAddress || '';
+        return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
+    };
 
     // Setup WebSocket chat. One server instance so HTTP and HTTPS clients share
     // the same client list and history; previously each got its own.
     const setupChat = require('./chat');
     setupChat(httpsServer);
-    if (plainHttpApi) setupChat(httpServer);
+    setupChat(httpServer); // Reachable over loopback, and over the LAN if plainHttpApi.
 
     if (httpEnabled) {
         if (!plainHttpApi) {
+            const appHandler = httpServer.listeners('request')[0];
             httpServer.removeAllListeners('request');
             httpServer.on('request', (req, res) => {
+                if (isLoopback(req)) return appHandler(req, res);
                 const host = (req.headers.host || '').split(':')[0];
                 res.writeHead(301, { Location: `https://${host}:${HTTPS_PORT}${req.url}` });
                 res.end();
             });
         }
-        httpServer.listen(PORT, httpBindAddress, () => {
+        httpServer.listen(PORT, '0.0.0.0', () => {
             // Do nothing here, log below
         });
     }

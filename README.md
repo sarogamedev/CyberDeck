@@ -108,33 +108,34 @@ cd CyberDeck\server
 powershell -ExecutionPolicy Bypass -File .\setup-windows.ps1
 ```
 
-### Desktop window (optional)
-
-CyberDeck is used from a browser. If you want it in its own window instead of a
-tab, the Electron shell starts the server and loads the same UI:
-
-```bash
-npm run setup   # installs the desktop shell and the server
-npm start       # opens the desktop window
-```
-
-> **Deprecated distributions.** The packaged Windows `.exe` and the two native
-> Android apps (`CyberDeck_Server`, `CyberDeck_Client`) are no longer built from
-> this branch; their output belongs in Releases, not in the repository. Existing
+> **Deprecated distributions.** The packaged Windows `.exe`, the Electron
+> desktop shell, and the two native Android apps (`CyberDeck_Server`,
+> `CyberDeck_Client`) have all been removed from this branch. CyberDeck is a
+> server you open in a browser, and none of them were needed for that. Existing
 > builds stay on the [Releases](https://github.com/sarogamedev/CyberDeck/releases)
 > page and the Android sources live on their own branches, but they receive no
-> fixes, including security fixes. Running the server and opening it in a browser
-> replaces all three. See [DEPRECATED.md](DEPRECATED.md).
+> fixes, including security fixes. See [DEPRECATED.md](DEPRECATED.md).
 
 ### Starting the Server
 ```bash
 node server.js
 ```
 
-The server displays your LAN IP. Open it on any device on the same network:
-- **Client App**: `http://<ip>:8888`
-- **Admin Panel**: `http://<ip>:8888/admin`
-- **Secure Mode (HTTPS)**: `https://<ip>:8443` (Required for Mesh/Camera/Microphone features)
+The server prints its LAN IP on start. Open it in any browser:
+
+**On the machine running it** — plain HTTP, no certificate prompt:
+- **App**: `http://localhost:8888`
+- **Admin Panel**: `http://localhost:8888/admin`
+
+**From any other device on the network** — HTTPS, because credentials would
+otherwise cross the network in the clear. `http://<ip>:8888` redirects here, so
+it is still the address you can type:
+- **App**: `https://<ip>:8443`
+- **Admin Panel**: `https://<ip>:8443/admin`
+
+The certificate is self-signed and generated on first run, then reused, so you
+accept it once per device. HTTPS is also required for the mesh, camera and
+microphone features, which browsers gate behind a secure context.
 
 *(First run seeds `admin` / `cyberdeck`. The server blocks every other API call until that password is changed, so change it at first login.)*
 
